@@ -70,6 +70,16 @@ survive a relaunch - but the level data in the PSRAM does not, and the record's 
 data correctly fails. Every launch loads from the CD. Within a session (title → level → back → the
 same level) the records work as before.
 
+## Where it stands (26 Oct 2026)
+
+With the engine patch in the disc (the first discs had it applied *after* the engine was compiled -
+a `build.sh` anchor mistake, since fixed): the save lands in bank 31, survives the EverDrive menu and
+loads from the title's passport on the console. **Opening the passport in the game still freezes**
+(music on, the Sub-CPU idle, the last command complete - the master SH2 dies right after a save
+command returns, never at the title). EDSAVE-3: two launcher-only variants to split it -
+`EDCD_SAVEBANK=27` (a PSRAM bank: is it the battery RAM?) and `EDCD_SAVEWIN=7` (is it window 1,
+where the Caves data is, being remapped under the game?). See docs 03, MODE1-7b.
+
 ## Checking it
 
 - On the console: save in a slot, reset to the menu, relaunch, Load Game lists it;

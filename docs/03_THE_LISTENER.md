@@ -48,6 +48,13 @@ MODE1-3 route with another bank. Only the bank's first 256 KB; above that the OS
 things. The Sub-CPU reaches it with `MD_CMD_CHILLY_RV_MEMCPY` to or from `0x800000 + offset`
 (`m1_arg` leaves addresses at `0x800000` and above untouched).
 
+`M1SAVEBANK=<n>` / `M1SAVEWIN=<1-7>` (`OL_M1SAVEBANK`, `OL_M1SAVEWIN`; OpenLara's `build.sh`:
+`EDCD_SAVEBANK`, `EDCD_SAVEWIN`): another bank for the saves and another window to show it in for
+the copies. Defaults 31 and 1. Made for the EDSAVE-3 console tests of the in-game passport freeze
+(26 Oct 2026): bank 27 (PSRAM - nothing persists, but it asks whether the battery RAM is what
+freezes the game) and window 7 (window 1 holds the Caves level data while it is played; window 7
+is free then). Without `M1SAVE` nothing of this assembles.
+
 ## MODE1-2, 4, 8: the rest
 
 | Switch | Effect |
