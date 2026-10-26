@@ -1,6 +1,6 @@
 # 08 – Hand-off: building CD32X games for the Mega EverDrive PRO
 
-Written 26 Oct 2026, 09:30, for the next chat. The person you work with (MicroNut99) owns the
+Written 26 Oct 2026, 09:30, updated 11:10 (ED-SAVE in every game), for the next chat. The person you work with (MicroNut99) owns the
 console and the EverDrive, burns the discs and runs the tests; you build and check everything
 first. Read this, then `docs/00`–`07` of this repository as needed.
 
@@ -71,26 +71,32 @@ default program is byte-identical after the merge.
 | Game | Repo (branch main) | Switch | Launcher | Disc | State |
 |---|---|---|---|---|---|
 | OpenLara REV | OpenLaraCD32X-REV `cart-test-8mb-16mb` (+ mirror OpenLaraCD32X-REV_EDCD) | `CART=ED EDCD=1 EDCD_SAVE=1` | `subcpu/EDCD_OPENLARA.32X` | `subcpu/CDROMPlayer_cartED_music.cue` | **Works on the console**: boots, plays, saves on the SD card (bank 31), in-game save/load/relaunch confirmed 26 Oct 01:02. Reference implementation. |
-| OpenJazz REV | OpenJazzCD32X-REV | `CART=ED EDCD=1` | `cd32x/subcpu/EDCD_JAZZ.32X` | `cd32x/subcpu/OpenJazzCD32X_cartED.cue` | Built on S: this morning (after a missing `--mode1` in its `prep_openlara_cd.py`, fixed). **Not yet run on the console.** |
-| Hurrican | HurricanCD32X | `CART=ED EDCD=1` | `cd32x/subcpu/EDCD_HURRICAN.32X` | `cd32x/subcpu/HurricanP1q_cartED.cue` | In GitHub; the S: folder is a fresh clone `HurricanCD32X_ED` (data via `HURRICAN_DATA=`). **Not yet run.** |
-| SuperTux REV | SuperTuxCD32X_REV | `CART_MB=ED EDCD=1` | `cd32x/subcpu/EDCD_SUPERTUX.32X` | `cd32x/subcpu/SuperTuxREV11-ED-T1.cue` | Clone `SuperTuxCD32X_ED` on S: (data via `SUPERTUX=`). Levels kept in pages 2-6 like the 8 MB build (no first-start copy). **Not yet run.** |
-| D32XR (Doom) | D32XR_CD32X | `CART=ED EDCD=1` | `cd32x/subcpu/EDCD_DOOM.32X` | `discs/D32XR_CD32X_R2_cartED/` | Committed `cc0edfe`, compiled here, **never built with data nor run**. Its game's second 2 MB go to page 1 (`PAGE=1`); its own 68000 program (`d32xr/src-md/crt0.s`, `CD32X_ED`) writes the window registers and the write bit. Not on S: yet. |
+| OpenJazz REV | OpenJazzCD32X-REV | `CART=ED EDCD=1 EDCD_SAVE=1` | `cd32x/subcpu/EDCD_JAZZ.32X` | `cd32x/subcpu/OpenJazzCD32X_cartED.cue` | ED-SAVE `243bd20` (CMD 61 to bank 31, CMD 62 piece in). On S:. **Not yet run on the console.** |
+| Hurrican | HurricanCD32X | `CART=ED EDCD=1 EDCD_SAVE=1` | `cd32x/subcpu/EDCD_HURRICAN.32X` | `cd32x/subcpu/HurricanP1q_cartED.cue` | ED-SAVE `b3e89c9` (Jazz's, carried over). S: clone `HurricanCD32X_ED` (data via `HURRICAN_DATA=`), build line in its `buildcmd_edcd_save.txt`. **Not yet run.** |
+| SuperTux REV | SuperTuxCD32X_REV | `CART_MB=ED EDCD=1 EDCD_SAVE=1` | `cd32x/subcpu/EDCD_SUPERTUX.32X` | `cd32x/subcpu/SuperTuxREV11-ED-T1.cue` | ED-SAVE `ab778e0` (CMD 69 - 62 is SET_VRAM there; `plat_save_read`; the probe's page-1 marker read from the bank; its `check_boot.py` md5s updated). S: clone `SuperTuxCD32X_ED` (data via `SUPERTUX=`), `buildcmd_edcd_save.txt`. **Not yet run.** |
+| D32XR (Doom) | D32XR_CD32X | `CART=ED EDCD=1` | `cd32x/subcpu/EDCD_DOOM.32X` | `discs/D32XR_CD32X_R2_cartED/` | `cc0edfe` + ED-SAVE `3de1cc9` (always on with `CART=ED`: its 68000 program reads/writes bank 31 itself through CTRL1 - save piece 11, record piece 15; the launcher's Sub-CPU routes CMD 61; `EDCD_SAVE=1` exported for the RA header). Compiled here with stub headers, **never built with data nor run**. Not on S: yet. |
 | Sonic CD 2011 | Sonic2011CD32X (private) | - | - | - | **Not started.** Its 16 MB layout puts act-file slots and the menu's tail in page 7 (the fourth slot is exactly bank 31): needs a new page plan first, and its own rule - every disc proven in its sh2emu model (which models the PCB mapper, not the EverDrive's windows). |
 
 Build lines (WSL), all with `BOOTCAMP=/mnt/s/KoboPort/sega-toolchain-12.1/sega/CD32X-BootCamp`:
-`CART=ED EDCD=1 BOOTCAMP=... bash .../OpenJazzCD32X-REV/build.sh`,
-`HURRICAN_DATA=.../HurricanCD32X/HurricanData CART=ED EDCD=1 BOOTCAMP=... bash .../HurricanCD32X_ED/build.sh`,
-`SUPERTUX=.../SuperTuxCD32X_REV/SuperTux-0.1.3 CART_MB=ED EDCD=1 BOOTCAMP=... bash .../SuperTuxCD32X_ED/build.sh`,
+`CART=ED EDCD=1 EDCD_SAVE=1 BOOTCAMP=... bash .../OpenJazzCD32X-REV/build.sh`,
+`HURRICAN_DATA=.../HurricanCD32X/HurricanData CART=ED EDCD=1 EDCD_SAVE=1 BOOTCAMP=... bash .../HurricanCD32X_ED/build.sh`,
+`SUPERTUX=.../SuperTuxCD32X_REV/SuperTux-0.1.3 CART_MB=ED EDCD=1 EDCD_SAVE=1 BOOTCAMP=... bash .../SuperTuxCD32X_ED/build.sh`,
 `CART=ED EDCD=1 BOOTCAMP=... bash .../D32XR_CD32X/build.sh` (OpenLara: `buildcmd_edsave.txt` in its folder).
 
-## What is NOT done for any game but OpenLara
+## ED-SAVE: done in every game (26 Oct, 09:35-11:10), proven only in OpenLara
 
-- **Saves do not persist**: Jazz, Hurrican, SuperTux and Doom still write their saves (and
-  Doom its preload record - so Doom copies 10 MB of WADs from the CD at every boot) into the
-  cart's page 1, which the EverDrive wipes at its menu. The fix is OpenLara's EDSAVE-1 route
-  (docs/04): the save area through the Sub-CPU to bank 31 (CMD 61/62 + the listener's
-  `M1SAVE=1`, `EDCD_SAVE=1` adds the `RA` header), game by game.
-- Fast loading across relaunches cannot work (PSRAM wiped); within a session it does.
+All five now put page 1's save area in bank 31 with `EDCD_SAVE=1` (Doom: always with `CART=ED`).
+The pattern (OpenJazz REV `243bd20` is the reference for the Jazz-shaped games): the launcher's
+Sub-CPU program is compiled `-DCART_EDSAVE` with the listener's `M1SAVE=1`; its CMD 61 writes the
+piece to cart `0x800000 + piece * 4 KB` (the listener's bank-31 route) when window 1 shows page 1
+(`ed_page`, tracked in `cart_page_write`); a "piece in" command (62, SuperTux 69) brings a piece
+back into the 4 KB buffer, CMD 57 hands out the words; the SH2 asks once (COMM2 = 0x8000, reply
+bit 0x200) and reads the area through `plat_save_read()`; the disc is the same either way. Doom's
+68000 program does the bank access itself (CTRL1 = bank 31, `0x480000 + piece * 4 KB`). Every
+default Sub-CPU program and Doom's non-ED 68000 program were compared byte for byte.
+**Only OpenLara's saves are console-proven**; Jazz/Hurrican/SuperTux/Doom ED discs have not run at
+all yet. The WADs Doom keeps in pages 2-6 are PSRAM: copied at every boot, nothing can keep them.
+Fast loading across relaunches cannot work (PSRAM wiped); within a session it does.
 
 ## Tools
 
@@ -113,3 +119,12 @@ Build lines (WSL), all with `BOOTCAMP=/mnt/s/KoboPort/sega-toolchain-12.1/sega/C
   `#define STX_VERSION_*` line.
 - `device_commit_files` may serve a stale staged file by path: stage under a new file name.
 - The user's S: folders may be plain copies, not git checkouts, and may be older than GitHub.
+  The device shell cannot reach GitHub (proxy 403): copy changed files to S: with the device tools
+  and compare md5s.
+- SuperTux's `check_boot.py` strips the `#if STX_CART_PAGED` block up to the `#endif` before
+  `cmd == 53` (ED-SAVE has `#ifdef CART_EDSAVE` inside); its md5 is in the script.
+
+## Also in flight
+
+- `Rayman_32X_RAM` (its own repo + S: folder): a Rayverse (CC0) port plan, hand-off in its `HANDOFF.md`.
+- Open: Sonic CD 2011 page plan; console results of the four ED discs; Doom built with data on S:.
