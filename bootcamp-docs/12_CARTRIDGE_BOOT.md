@@ -76,6 +76,19 @@ PSRAM chips, bank 31 the backup memory.  Consequences:
 - "is the game / level already in the cart?" checks can never hit after a relaunch; every launch loads
   from the CD.  The checks are harmless (they verify a checksum of the data), just never true.
 
+**An SH2 during the 68000's RV = 1 copies (26 Oct 2026, `edsave3/EDSAVE3.32X`).**  OpenLara's saves in
+bank 31 worked at the title and froze the in-game passport - the master SH2 dead in its own code right
+after a save command, with a PSRAM bank and with window 7 just the same.  The probe: the slave reads
+window 4 nonstop (the fills made with W on inside RV = 1), the master reads window 2 between its polls,
+the slave runs code out of window 4, while the 68000 does 64 × 4 KB blocks of bank 31 as the listener
+does.  68000 idle: 0 bad of 393K reads; RV = 1 copies through any window: **965,207 bad of 978K**
+(and the reads came back four times faster than real ones); the master 1,309 of its own; RV = 0: 4.
+**The EverDrive does not hold an SH2 off the cart while RV = 1 - it answers with garbage.**  A real
+cart stalls the SH2 (docs/06 rule 11), which is what the stack and the engine had assumed; on the
+EverDrive a cached poll loop is luck, and the game's cold cache made it a freeze.  OpenLara EDSAVE-4:
+for CMD 46 / 61 / 62 both SH2s wait in a loop in SDRAM with interrupts masked (the slave sent there
+first, `MARS_CMD_PARK`, and acknowledged).  The listener is unchanged: the rule is the game's.
+
 **Switches** (all off by default): `M1WORDS=1` word copies; `EDCD_SAVE=1` the save bank (above); `EDCD_W0=<bank>` the game in that EverDrive bank
 (window 0 shows it; the listener's window-1 route follows); `EDCD_X=1` CTRL0 with the EverDrive's X bit
 (`0xC000`; it changed nothing on the console).  The diagnostic build has more (`M1MINVB`, `M1NOVINT`,
@@ -125,7 +138,7 @@ the 68000 idle or reading anything, and failing - zeros, and the stored words ch
 68000 *writes* anything with the write-enable bit on.  `edw0/EDW0E_W.32X` shows it in one screen.
 
 **ares** did not model that EverDrive behaviour (its reads were right all along), which is why every
-launcher passed there first.  It does now (the ares CD32X build, branch `everdrive-pro`, 25 Oct 2026): a 68000 write to
+launcher passed there first.  It does now (the ares CD32X build `everdrive-pro`, 25 Oct 2026): a 68000 write to
 anything but the cart with W on disturbs an SH2 cart read within 1 µs of it (the read returns 0 and the word
 takes the 68000's data), and a direct 68000 write to window 0 is dropped.  With that, the launcher that
 works on the console (`EDCD_H3`) boots BootCamp and OpenLara in ares, and the earlier one with W always on

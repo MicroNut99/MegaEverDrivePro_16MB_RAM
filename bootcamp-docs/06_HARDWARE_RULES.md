@@ -48,8 +48,12 @@ you burn.
 9. **The SH2s cannot write the cart.** Every write goes through the 68000 with RV = 1 (CMD 46, 61).
 10. **Purge the caches after the 68000 writes the cart,** on both SH2s (CCR = `0x11`), or read
     cache-through (`0x22xxxxxx`).
-11. **While RV = 1, SH2 cart reads simply wait.** No tricks are needed. In OpenLara, parking the slave in
-    SDRAM during loads caused many dead discs.
+11. **While RV = 1, SH2 cart reads simply wait** - on a real cartridge (the 16 MB PCB cart, every CD
+    boot so far). No tricks are needed there; in OpenLara, parking the slave in SDRAM during loads once
+    caused many dead discs. **Not on the Mega EverDrive PRO**: there an SH2 cart access during RV = 1 is
+    answered at once with garbage (`edsave3`, 26 Oct 2026, docs/12), so with the EverDrive both SH2s must
+    be in SDRAM code with interrupts masked for every 68000 copy with RV = 1 (OpenLara EDSAVE-4, the
+    `EDCD_SAVE=1` disc only).
 12. **Keep code that runs during a load out of the cart.** OpenLara's movies play while they stream:
     their hot loops are in SDRAM.
 13. **Put packs on 32 KB boundaries** (one CMD 46 chunk), and keep the first 512 KB for your ROM.
