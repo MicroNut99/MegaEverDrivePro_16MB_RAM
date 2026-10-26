@@ -21,12 +21,18 @@ first. Read this, then `docs/00`–`07` of this repository as needed.
   crazy test." Send all tests at once, in the order to run them. Every disc and launcher gets a
   **unique, versioned name** (nothing may overwrite the 16 MB-cart build of the same game).
   26 Oct 11:16, their words: "Make sure any new 32X.bin and bin/cue file built has a unique EDCD
-  name tag." So a new EverDrive build names both its launcher and its disc with an `EDCD` tag and
-  the variant, e.g. Doom: `EDCD_DOOM.32X` + `D32XR_CD32X_R2_EDCD_DOOM`, `EDCD_DOOM_SIGIL.32X` +
-  `..._EDCD_DOOM_SIGIL` (`MUSIC=sigil`), `EDCD_DOOM_ROMMAPS.32X` (`ROMMAPS=`), and a launcher that
-  is *not* the EverDrive's gets a name of its own (`EDCD_DOOM_PAGE7.32X`) - the EverDrive keeps each
-  launcher's saves under its own name, so two variants must never share one. The four earlier games'
-  discs carry `_cartED` / `-ED-T1` instead (already unique, already built): rename only if asked.
+  name tag." **A disc names the launcher it belongs with**, because the launcher's file name is the
+  save's name (`MEGA/gamedata/<launcher>/bram.srm`), so the disc tells you which save it will use:
+  `OpenJazzCD32X_EDCD_OPENJAZZ` + `EDCD_OPENJAZZ.32X`, `HurricanP1q_EDCD_HURRICAN` +
+  `EDCD_HURRICAN.32X`, `D32XR_CD32X_R2_EDCD_DOOM` + `EDCD_DOOM.32X` (and Doom's variants
+  `..._EDCD_DOOM_SIGIL` / `_ROMMAPS` with launchers to match; a launcher that is *not* the
+  EverDrive's gets its own name, `EDCD_DOOM_PAGE7.32X`). Two exceptions, both deliberate:
+  **OpenLara** keeps `EDCD_OPENLARA.32X` + `CDROMPlayer_cartED_music` because it is burned, tested
+  and its save works; and **SuperTux** keeps `SuperTuxREV11-ED-T1` (MicroNut99, 26 Oct 13:50: "Tux
+  is good. No change") - its name is built by a `sed` of the version string in `game/stx.h`.
+  The 4 / 8 / 16 MB discs always keep the names they were built under (`_cart8`, `_cart16`).
+  Override a disc name with **`DISC_NAME`, never `NAME`**: WSL exports `NAME` as the Windows
+  machine's name, and `${NAME:-...}` took it - Doom's first ED disc came out as `discs/Mumra`.
 - Build commands in their WSL form:
   `cd /mnt/s/KoboPort/sega-toolchain-12.1/sega/<game>` then
   `... bash /mnt/s/.../build.sh 2>&1 | tee /mnt/s/.../build_edcd_log.txt`.
@@ -78,8 +84,8 @@ default program is byte-identical after the merge.
 | Game | Repo (branch main) | Switch | Launcher | Disc | State |
 |---|---|---|---|---|---|
 | OpenLara REV | OpenLaraCD32X-REV `cart-test-8mb-16mb` (+ mirror OpenLaraCD32X-REV_EDCD) | `CART=ED EDCD=1 EDCD_SAVE=1` | `subcpu/EDCD_OPENLARA.32X` | `subcpu/CDROMPlayer_cartED_music.cue` | **Works on the console**: boots, plays, saves on the SD card (bank 31), in-game save/load/relaunch confirmed 26 Oct 01:02. Reference implementation. |
-| OpenJazz REV | OpenJazzCD32X-REV | `CART=ED EDCD=1 EDCD_SAVE=1` | `cd32x/subcpu/EDCD_JAZZ.32X` | `cd32x/subcpu/OpenJazzCD32X_cartED.cue` | ED-SAVE `243bd20` (CMD 61 to bank 31, CMD 62 piece in). On S:. **Not yet run on the console.** |
-| Hurrican | HurricanCD32X | `CART=ED EDCD=1 EDCD_SAVE=1` | `cd32x/subcpu/EDCD_HURRICAN.32X` | `cd32x/subcpu/HurricanP1q_cartED.cue` | ED-SAVE `b3e89c9` (Jazz's, carried over) **+ `98d0473`: its high scores rerouted from the Sega CD's backup RAM to save piece 12 in bank 31** - without it the ED build saved nothing a player would notice. S: clone `HurricanCD32X_ED` (data via `HURRICAN_DATA=`), build line in its `buildcmd_edcd_save.txt`. **Not yet run.** |
+| OpenJazz REV | OpenJazzCD32X-REV | `CART=ED EDCD=1 EDCD_SAVE=1` | `cd32x/subcpu/EDCD_OPENJAZZ.32X` | `cd32x/subcpu/OpenJazzCD32X_EDCD_OPENJAZZ.cue` | ED-SAVE `243bd20` (CMD 61 to bank 31, CMD 62 piece in). On S:. **Not yet run on the console.** |
+| Hurrican | HurricanCD32X | `CART=ED EDCD=1 EDCD_SAVE=1` | `cd32x/subcpu/EDCD_HURRICAN.32X` | `cd32x/subcpu/HurricanP1q_EDCD_HURRICAN.cue` | ED-SAVE `b3e89c9` (Jazz's, carried over) **+ `98d0473`: its high scores rerouted from the Sega CD's backup RAM to save piece 12 in bank 31** - without it the ED build saved nothing a player would notice. S: clone `HurricanCD32X_ED` (data via `HURRICAN_DATA=`), build line in its `buildcmd_edcd_save.txt`. **Not yet run.** |
 | SuperTux REV | SuperTuxCD32X_REV | `CART_MB=ED EDCD=1 EDCD_SAVE=1` | `cd32x/subcpu/EDCD_SUPERTUX.32X` | `cd32x/subcpu/SuperTuxREV11-ED-T1.cue` | ED-SAVE `ab778e0` (CMD 69 - 62 is SET_VRAM there; `plat_save_read`; the probe's page-1 marker read from the bank; its `check_boot.py` md5s updated). S: clone `SuperTuxCD32X_ED` (data via `SUPERTUX=`), `buildcmd_edcd_save.txt`. **Not yet run.** |
 | D32XR (Doom) | D32XR_CD32X | `CART=ED EDCD=1` | `cd32x/subcpu/EDCD_DOOM.32X` | `discs/D32XR_CD32X_R2_EDCD_DOOM/` | `cc0edfe` + ED-SAVE `3de1cc9` (always on with `CART=ED`: its 68000 program reads/writes bank 31 itself through CTRL1 - save piece 11, record piece 15; the launcher's Sub-CPU routes CMD 61; `EDCD_SAVE=1` exported for the RA header). Now **on S:** (`D32XR_CD32X`, the folder with the WADs): its 7 ED files copied, the two protected `Makefile`s edited in place, build line in `buildcmd_edcd_save.txt`. The S: copy was **ahead** of GitHub in four files (SIGIL in the ROM / `ROMMAPS`, the 4 MB board, the test switches): imported as `e4940b3` and `build.sh` merged in `05daa01`. Compiled here with stub headers, **never built with data nor run**. |
 | Sonic CD 2011 | Sonic2011CD32X (private) | - | - | - | **Not started.** Its 16 MB layout puts act-file slots and the menu's tail in page 7 (the fourth slot is exactly bank 31): needs a new page plan first, and its own rule - every disc proven in its sh2emu model (which models the PCB mapper, not the EverDrive's windows). |
