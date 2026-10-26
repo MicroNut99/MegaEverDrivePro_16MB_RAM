@@ -78,7 +78,7 @@ a `build.sh` anchor mistake, since fixed): the save lands in bank 31, survives t
 loads from the title's passport on the console. The in-game passport froze (music on, the Sub-CPU
 idle, the last command complete, the master SH2 dead in its own code) with bank 27 and with window 7
 just the same (EDSAVE-3 launchers) - then `edsave3` measured the cause (docs 01, rule 8; docs 05) and
-EDSAVE-4 is the fix: both SH2s in SDRAM for every RV = 1 copy. Verified in ares; the console's turn.
+EDSAVE-4 is the fix: both SH2s in SDRAM for every RV = 1 copy. **Confirmed on the console, 26 Oct 2026, 01:02**: in-game save, load, relaunch, load.
 
 ## Checking it
 

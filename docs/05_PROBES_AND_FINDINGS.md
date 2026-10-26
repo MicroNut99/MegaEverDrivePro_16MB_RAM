@@ -99,3 +99,4 @@ game's frame counter stopped (`CA`), the last command complete.
 7. (26 Oct) Saves persist and load at the title; the in-game passport freezes with a PSRAM bank
    and with window 7 alike (EDSAVE-3) → `edsave3`: an SH2 cart access during RV = 1 returns garbage,
    it is not held → EDSAVE-4: both SH2s in SDRAM, interrupts masked, for every RV = 1 copy.
+   Console: the in-game passport saves and loads; the save outlives the menu. Done.

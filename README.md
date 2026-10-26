@@ -5,7 +5,7 @@ CD32X disc (Genesis + Sega CD + 32X): the facts measured on the console, the lau
 disc from the EverDrive, the 68000 listener that works the cart the way the console demands, the
 saves on the EverDrive's SD card, the probes that found each rule, and the ares model that
 reproduces the hardware. Proven on a console with the CD32X BootCamp disc and OpenLara CD32X,
-25 October 2026.
+25-26 October 2026 - including OpenLara's saves on the SD card, saved and loaded in the game.
 
 Nothing in here is game data, a BIOS or a disc image. The sources are copies of the folders that
 live in the projects they came from (CD32X BootCamp, OpenLara CD32X REV, the ares CD32X build);
