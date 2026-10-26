@@ -106,6 +106,46 @@ default Sub-CPU program and Doom's non-ED 68000 program were compared byte for b
 all yet. The WADs Doom keeps in pages 2-6 are PSRAM: copied at every boot, nothing can keep them.
 Fast loading across relaunches cannot work (PSRAM wiped); within a session it does.
 
+## Testing the save work in ares instead of on a disc (26 Oct, 11:32: "We don't need to burn discs
+to test anymore")
+
+The ares CD32X build with the EverDrive board makes the four untested ED-SAVE builds testable on the
+PC. Two things it does NOT model decide what a green run there is worth:
+
+1. **The PSRAM wipe is not modelled** (docs/11: "the wipe is not modelled - ares keeps the 16 MB").
+   Banks 0-29 keep their contents across a return to the menu, so a save that survives a relaunch in
+   ares proves **nothing** about ED-SAVE: the old page-1 path looks identical there. The discriminator
+   is **where the bytes went**: with ED-SAVE working, the save is in bank 31, so the board's
+   `bram.srm` holds it; if the game silently took the cart path instead, the game still shows the
+   save in ares while `bram.srm` stays blank. Check the file, not the passport.
+2. **The RV = 1 garbage is not modelled**: ares holds the SH2s while the 68000 has the bus, the
+   console answers an SH2 cart access with garbage (`edsave3`, rule 8). A freeze of that class cannot
+   appear in ares at all - it has to be found by reading the code, which is why the wait path was
+   reviewed by hand (below).
+
+### The hand review of Fable's save work (26 Oct, 11:30-11:35, Opus) - no defects found
+
+- **The word exchange**: CMD 57's index is masked to `BRAM_BYTES / 2 - 1` = 2047 against a 4 KB
+  buffer, so `ed_fetch`'s 2048-word loop is in range (the handler's "128-byte buffer" comment is
+  stale from Kobo's K36 - the code is right).
+- **Both SH2s in SDRAM for every RV = 1 copy**: OpenJazz, Hurrican and SuperTux park the slave
+  (`JOB->park`, wait for `JOB->parked`) *before* writing COMM0 and then wait in `sdram_wait`
+  (`.data.sdram`, `noinline`, SR masked) - the order is right in all three. The new piece fetch
+  (CMD 62 / SuperTux 69) goes through `send_cmd_rv`; the capability query and the 2048 word reads
+  use plain `send_cmd`, which is correct - the Sub-CPU touches no cart for those.
+- **Doom**: its SH2 CMD-IRQ wait is in `.sdata` (SDRAM) in `d32xr/crt0.s` - the loop spins on COMM0
+  at `0x20004020` and only calls the C handler for a non-exit command, so nothing fetches the cart
+  while the 68000 holds RV = 1. ED-SAVE changes only the address the 68000 touches (bank 31 through
+  CTRL1 instead of page 1 through CTRL4-7), not the timing, and the page-7 form of that same path is
+  console-proven - so the riskiest class of change was not made.
+- **Arithmetic**: Doom's piece 11 -> `0x48B000` and the loader's record piece 15 (page-1 offset
+  `0x1FF000`) -> `0x48F000` both land where the listener's bank-31 route puts them; `plat_save_read`
+  offsets stay inside the 4 KB buffer everywhere (`off + n <= 4096`; SuperTux's `SAVE_BYTES` is 368);
+  the only direct `0x223F0000` reads left are the non-ED fallbacks inside `plat_save_read`.
+- Noted, not fixed: on a **4 MB** cart SuperTux's board probe would now call itself 8 MB, because
+  page 1's marker goes to the bank while pages 2 and 6 go to the cart. The ED build only ever runs on
+  the EverDrive's 16 MB, so it cannot be reached; leave it unless the ED build is ever cut to 4 MB.
+
 ## Tools
 
 - `listener/ed_apply_jazzlike.py <game>` (also in the BootCamp `tools/`): applies the whole set
