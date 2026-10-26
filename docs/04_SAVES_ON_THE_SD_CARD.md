@@ -48,13 +48,14 @@ directly.
   on the Save page - and each was a round trip per piece and per word. The levels are read once and
   kept; a write to the save area forgets them. Without this the Save page brought the game to a
   crawl on the console.
-- **SH2 parking** (EDSAVE-2): before every `61` and `62` the master waits for the slave to finish
-  its command (`MARS_WAIT`) and stops the slave's PWM mixer (`sfxBankStop`, its DMA reads the
-  sound bank out of the cart); after the command the mixer restarts (`sfxBankStart`, if it was
-  on). Nested, so a run of commands parks once. This is exactly what the level loads always did
-  before their copies - the saves did not, and on the console a 68000 copy with RV = 1 while the
-  slave drew and its DMA read the cart locked both SH2s, every time the passport opened (`T62 P102
-  S3` as the last trace line, the frame counter stopped, the Sub-CPU and the 68000 idle).
+- **SH2 parking** (EDSAVE-2, then EDSAVE-4): before every `61` and `62` (and every level chunk,
+  `46`) the master sends the slave into a loop that lives in SDRAM (`MARS_CMD_PARK`, acknowledged
+  with `PARK_ACK`), then waits for the Sub-CPU in the same kind of loop itself - both with interrupts
+  masked, nothing fetched or read from the cart until `COMM0` clears; `csUnpark` lets the slave out.
+  EDSAVE-2 had only parked the slave between commands and stopped its mixer, which was not it: the
+  console (`edsave3`) showed that an SH2 cart access during RV = 1 is answered with garbage, not
+  held, so the master's own poll loop or its vblank handler, fetched from the cart during a copy,
+  was what died - in the game (cold cache), never at the title.
 
 ## What a save costs
 
@@ -74,11 +75,10 @@ same level) the records work as before.
 
 With the engine patch in the disc (the first discs had it applied *after* the engine was compiled -
 a `build.sh` anchor mistake, since fixed): the save lands in bank 31, survives the EverDrive menu and
-loads from the title's passport on the console. **Opening the passport in the game still freezes**
-(music on, the Sub-CPU idle, the last command complete - the master SH2 dies right after a save
-command returns, never at the title). EDSAVE-3: two launcher-only variants to split it -
-`EDCD_SAVEBANK=27` (a PSRAM bank: is it the battery RAM?) and `EDCD_SAVEWIN=7` (is it window 1,
-where the Caves data is, being remapped under the game?). See docs 03, MODE1-7b.
+loads from the title's passport on the console. The in-game passport froze (music on, the Sub-CPU
+idle, the last command complete, the master SH2 dead in its own code) with bank 27 and with window 7
+just the same (EDSAVE-3 launchers) - then `edsave3` measured the cause (docs 01, rule 8; docs 05) and
+EDSAVE-4 is the fix: both SH2s in SDRAM for every RV = 1 copy. Verified in ares; the console's turn.
 
 ## Checking it
 

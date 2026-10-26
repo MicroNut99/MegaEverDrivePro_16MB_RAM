@@ -67,8 +67,14 @@ And two more, from the saves (docs 04):
 
 The SH2s read the cart at `0x02000000` (cached) and `0x22000000` (cache-through), the same four
 windows. Both SH2s read every bank exactly as the 68000 wrote it (`edtest`: 27 banks, three passes,
-0 bad words). While RV = 1, an SH2's access to the cart is held until RV = 0 - which is what makes
-the 68000's copies safe, and what makes rule 5 matter.
+0 bad words). **While RV = 1, an SH2's access to the cart is NOT held until RV = 0 on the
+EverDrive** - it is answered at once, with garbage (`edsave3`, console, 26 Oct 2026: the slave read
+965,207 bad words of 978K through the 68000's RV = 1 copies, and got them faster than real reads;
+the master 1,309 of its own; reads with RV = 0 and with the 68000 idle: 0). The 32X manual says
+only that the SH2 must not access ROM then; a real cart stalls it (D32XR relies on that). So the
+rule for a game: **during every 68000 copy with RV = 1, both SH2s must run from SDRAM with their
+interrupts masked and touch nothing in the cart** - a cached loop is luck, and in a game the cache
+is cold. That is rule 8, and what the passport freeze was.
 
 ## What is still a choice
 

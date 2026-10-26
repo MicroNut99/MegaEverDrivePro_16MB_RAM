@@ -19,8 +19,8 @@ this repository is the one place that holds all of it with the explanation.
 | [docs/01_THE_EVERDRIVE_AS_RAM.md](docs/01_THE_EVERDRIVE_AS_RAM.md) | The EverDrive's mapper, registers, banks, which memory is PSRAM and which goes to the SD card. The console's three rules. |
 | [docs/02_CARTRIDGE_BOOT.md](docs/02_CARTRIDGE_BOOT.md) | Why a CD boot cannot work, and how `EDCD.32X` boots the disc from the cartridge: the 32X hook, the Sega CD brought up by the launcher, the hand-over to the disc's own boot stack. |
 | [docs/03_THE_LISTENER.md](docs/03_THE_LISTENER.md) | The 68000 listener for the cartridge boot (`MODE1`): the address map, the window-1 route, the write-enable bit, the save bank, every switch. |
-| [docs/04_SAVES_ON_THE_SD_CARD.md](docs/04_SAVES_ON_THE_SD_CARD.md) | Why saves in the cart vanish, bank 31 and `bram.srm`, how OpenLara reads and writes its saves through the Sub-CPU, and why every save command parks the slave SH2. |
-| [docs/05_PROBES_AND_FINDINGS.md](docs/05_PROBES_AND_FINDINGS.md) | `edtest`, `edw0`, `edsave`, `edsave2`: what each ROM does and what the console answered. The chronology of the day. |
+| [docs/04_SAVES_ON_THE_SD_CARD.md](docs/04_SAVES_ON_THE_SD_CARD.md) | Why saves in the cart vanish, bank 31 and `bram.srm`, how OpenLara reads and writes its saves through the Sub-CPU, and why both SH2s sit in SDRAM for every save copy (EDSAVE-4). |
+| [docs/05_PROBES_AND_FINDINGS.md](docs/05_PROBES_AND_FINDINGS.md) | `edtest`, `edw0`, `edsave`, `edsave2`, `edsave3`: what each ROM does and what the console answered. The chronology. |
 | [docs/06_ARES_MODEL.md](docs/06_ARES_MODEL.md) | The EverDrive board in ares: what is modelled, what is a choice, how to run the cartridge boot in the window and headless. |
 | [docs/07_YOUR_OWN_GAME.md](docs/07_YOUR_OWN_GAME.md) | **`EDCD.32X` is a hook for *your* CD game**: what it carries, why there is one per disc, and how to make one for a game on the stack, step by step - and what to do about its saves. |
 
@@ -34,7 +34,7 @@ docs 01, 04, 06, 09, 10, 11, 12), `openlara/README-EDCD.md`, `openlara/README-EV
 |---|---|---|
 | `launcher/` | `EDCD.32X` sources: `edcd_md.s` (the 68000 program), `edcd_sp.s` (the Sub-CPU start-up), `make_edcd.py` (the ROM, header, 32X hook), `build_edcd.sh`; the earlier `EDBOOT`/`EDPROBE` experiments; `EDCD_BOOTCAMP.32X` built for the BootCamp disc | CD32X BootCamp `edboot/` |
 | `listener/` | `hw_md.s`, the 68000 listener of the boot stack with the `MODE1` cartridge-boot build and its switches; the Sub-CPU `Makefile`; the BootCamp `build.sh` (its `EDCD=1` block); `prep_rom.py --mode1` | CD32X BootCamp `stack/subcpu/`, `tools/` |
-| `probes/` | `edtest` (the 16 MB as RAM), `edw0` (the write-enable rule), `edsave` (what survives the menu), `edsave2` (the save bank as the listener works it, SH2 busy) - sources and the built ROMs | CD32X BootCamp |
+| `probes/` | `edtest` (the 16 MB as RAM), `edw0` (the write-enable rule), `edsave` (what survives the menu), `edsave2` (the save bank as the listener works it, SH2 busy), `edsave3` (an SH2 during RV = 1: held, or garbage?) - sources and the built ROMs | CD32X BootCamp |
 | `openlara/` | OpenLara's Sub-CPU program with the save commands (`subcpu/main.c`: CMD 61, 62, 57, 58), its listener and Makefile, the engine patch `openlara-edsave.patch` (saves through the Sub-CPU, slot cache, SH2 parking), `build.sh` with the `EDCD` / `EDCD_SAVE` / `EDCD_DIAG` blocks, the readmes | OpenLara CD32X REV |
 | `ares/` | `everdrive-pro-core-v148.patch` (the whole EverDrive core against upstream ares v148, as of 25 Oct 2026), the three files it changes most for reading, `README-CD32X.md` (the manual), the release notes | the ares CD32X build |
 
@@ -77,10 +77,10 @@ CART=ED EDCD=1 EDCD_SAVE=1 EDCD_DIAG=1 bash build.sh   # the same launcher with 
 ```
 
 The probes build on their own: `bash probes/edtest/build.sh`, `bash probes/edw0/build.sh`,
-`bash probes/edsave/build.sh`, `bash probes/edsave2/build.sh` (no disc, run from the EverDrive menu
+`bash probes/edsave/build.sh`, `bash probes/edsave2/build.sh`, `bash probes/edsave3/build.sh` (no disc, run from the EverDrive menu
 with the 32X attached).
 
-## The facts in one place (all measured on a console, 24-25 Oct 2026)
+## The facts in one place (all measured on a console, 24-26 Oct 2026)
 
 1. **The EverDrive stays the cartridge.** Its `C` bit does not release CART_IN; a CD boot with it in
    the slot is impossible. The disc is booted *from* the cartridge: `EDCD.32X` starts the Sega CD
@@ -101,9 +101,12 @@ with the 32X attached).
 7. **Bank 31 is the EverDrive's battery RAM**, kept on the SD card as
    `MEGA/gamedata/<launcher>/bram.srm` (256 KB) when the launcher's header declares save RAM. The
    saves go there, through the Sub-CPU (the SH2s cannot see that bank).
-8. **Before any 68000 copy with RV = 1 in a running game, park the slave SH2 and stop its PWM
-   mixer** - exactly what the level loads always did. A copy while the slave draws and its sound
-   DMA reads the cart locks both SH2s.
+8. **An SH2's cart access during a 68000 copy with RV = 1 is NOT held - it returns garbage at once**
+   (`edsave3`, 26 Oct 2026: ~100% bad words through every such copy). So for every such copy (level
+   chunks, the save bank) **both SH2s wait in a loop in SDRAM with their interrupts masked** - the
+   slave sent there first and acknowledged, the master after it. A cached loop is luck; in a game
+   the cache is cold, and that was the passport freeze (the master dying in its own code right after
+   a save command, never at the title).
 
 krikzz's own mapper source (github.com/krikzz/MEGA-PRO, `fpga/mapper/map_ssf/map_ssf.sv`) agrees
 with 2 and 7: banks 0-15 and 16-30 are the two 8 MB PSRAM chips, bank 31 is the backup memory.

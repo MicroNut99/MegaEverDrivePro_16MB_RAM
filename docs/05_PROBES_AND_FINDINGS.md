@@ -59,6 +59,21 @@ window 4 ran with W off, so the slave compared against unwritten memory. The cou
 the rows are not.) That pointed back at the game, and the diagnostic launcher found the slave's PWM
 DMA (docs 04, EDSAVE-2).
 
+## `edsave3` – held by RV, or garbage? (26 Oct 2026)
+
+With the passport still freezing with a PSRAM bank and with window 7 (EDSAVE-3 launchers), this ROM
+asks the last question: what does an SH2 get when it touches the cart while the 68000 holds RV = 1?
+The fills are made with W on inside RV = 1 (edsave2's were not). The slave reads window 4 nonstop
+and compares; the master reads window 2 between its polls; in the last phase the slave *executes* a
+function copied into window 4. Meanwhile the 68000 does 64 × 4 KB blocks of bank 31 through window
+1, through window 7, a window with its own bank, and through the 32X window with RV = 0.
+
+**Result:** row 1 (68000 idle) 0 bad of 393K reads; rows 2–5 (RV = 1 copies, any window, any bank)
+**965,207 bad of 978K**, 632,895 of 646K, 928,060 of 941K, 965,205 of 978K - and those reads came
+back four times faster than real ones; row 6 (RV = 0) 4 bad of 937K; row 7 the master alone 1,309
+bad; row 8 both 899,967 and 1,792. The SH2s are not held: a cart access during RV = 1 returns
+garbage at once. Code fetched that way runs - and that is the freeze. Rule 8, and EDSAVE-4.
+
 ## The diagnostic launcher (`EDCD_DIAG=1`)
 
 Not a probe but the same idea: the game's own launcher with the Sub-CPU's green text left on over
@@ -80,4 +95,7 @@ game's frame counter stopped (`CA`), the last command complete.
    Sub-CPU program unchanged throughout; the stack's md5 checked after every change.
 5. Saves did not persist → `edsave` → the PSRAM wipe, bank 31, `bram.srm` → EDSAVE-1.
 6. The passport froze → the slot cache; froze again → `edsave2` (memory fine) → the diagnostic
-   launcher → the slave's DMA → EDSAVE-2 (parking). Verified in ares; the console's turn.
+   launcher → EDSAVE-2 (parking the slave, mixer off): still froze.
+7. (26 Oct) Saves persist and load at the title; the in-game passport freezes with a PSRAM bank
+   and with window 7 alike (EDSAVE-3) → `edsave3`: an SH2 cart access during RV = 1 returns garbage,
+   it is not held → EDSAVE-4: both SH2s in SDRAM, interrupts masked, for every RV = 1 copy.

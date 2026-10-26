@@ -33,7 +33,7 @@ into window 1 (CTRL1 = `OL_M1W0BANK`, 0 unless `EDCD_W0=` says otherwise), copie
 CTRL0 is `OL_M1CTRL0` (`0x8000`, or `0xC000` with `EDCD_X=1`) - the write bit **off**. `m1_cpy_w`
 turns it on (`OL_M1CTRL0_W1`), copies, turns it off; it is used only for a copy *into* the cart,
 with RV = 1 already set by the caller, and the only 68000 write inside the window besides the cart
-is its own `bsr` push (harmless: the SH2s are held off the cart while RV = 1). Reads of the cart
+is its own `bsr` push (harmless: the SH2s must be off the cart while RV = 1 - docs 01, rule 8). Reads of the cart
 keep W off.
 
 The constant is written `OL_M1CTRL0 + 0x2000 + OL_M1W0BANK`, not with `|`: in m68k GNU as `|`
