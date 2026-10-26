@@ -1,6 +1,6 @@
 # 08 – Hand-off: building CD32X games for the Mega EverDrive PRO
 
-Written 26 Oct 2026, 09:30, updated 11:10 (ED-SAVE in every game), for the next chat. The person you work with (MicroNut99) owns the
+Written 26 Oct 2026, 09:30, updated 11:25 (ED-SAVE in every game; Doom on S:), for the next chat. The person you work with (MicroNut99) owns the
 console and the EverDrive, burns the discs and runs the tests; you build and check everything
 first. Read this, then `docs/00`–`07` of this repository as needed.
 
@@ -20,6 +20,13 @@ first. Read this, then `docs/00`–`07` of this repository as needed.
 - Short answers; answer the question first. "Review all the data before sending me out on a
   crazy test." Send all tests at once, in the order to run them. Every disc and launcher gets a
   **unique, versioned name** (nothing may overwrite the 16 MB-cart build of the same game).
+  26 Oct 11:16, their words: "Make sure any new 32X.bin and bin/cue file built has a unique EDCD
+  name tag." So a new EverDrive build names both its launcher and its disc with an `EDCD` tag and
+  the variant, e.g. Doom: `EDCD_DOOM.32X` + `D32XR_CD32X_R2_EDCD_DOOM`, `EDCD_DOOM_SIGIL.32X` +
+  `..._EDCD_DOOM_SIGIL` (`MUSIC=sigil`), `EDCD_DOOM_ROMMAPS.32X` (`ROMMAPS=`), and a launcher that
+  is *not* the EverDrive's gets a name of its own (`EDCD_DOOM_PAGE7.32X`) - the EverDrive keeps each
+  launcher's saves under its own name, so two variants must never share one. The four earlier games'
+  discs carry `_cartED` / `-ED-T1` instead (already unique, already built): rename only if asked.
 - Build commands in their WSL form:
   `cd /mnt/s/KoboPort/sega-toolchain-12.1/sega/<game>` then
   `... bash /mnt/s/.../build.sh 2>&1 | tee /mnt/s/.../build_edcd_log.txt`.
@@ -74,14 +81,15 @@ default program is byte-identical after the merge.
 | OpenJazz REV | OpenJazzCD32X-REV | `CART=ED EDCD=1 EDCD_SAVE=1` | `cd32x/subcpu/EDCD_JAZZ.32X` | `cd32x/subcpu/OpenJazzCD32X_cartED.cue` | ED-SAVE `243bd20` (CMD 61 to bank 31, CMD 62 piece in). On S:. **Not yet run on the console.** |
 | Hurrican | HurricanCD32X | `CART=ED EDCD=1 EDCD_SAVE=1` | `cd32x/subcpu/EDCD_HURRICAN.32X` | `cd32x/subcpu/HurricanP1q_cartED.cue` | ED-SAVE `b3e89c9` (Jazz's, carried over). S: clone `HurricanCD32X_ED` (data via `HURRICAN_DATA=`), build line in its `buildcmd_edcd_save.txt`. **Not yet run.** |
 | SuperTux REV | SuperTuxCD32X_REV | `CART_MB=ED EDCD=1 EDCD_SAVE=1` | `cd32x/subcpu/EDCD_SUPERTUX.32X` | `cd32x/subcpu/SuperTuxREV11-ED-T1.cue` | ED-SAVE `ab778e0` (CMD 69 - 62 is SET_VRAM there; `plat_save_read`; the probe's page-1 marker read from the bank; its `check_boot.py` md5s updated). S: clone `SuperTuxCD32X_ED` (data via `SUPERTUX=`), `buildcmd_edcd_save.txt`. **Not yet run.** |
-| D32XR (Doom) | D32XR_CD32X | `CART=ED EDCD=1` | `cd32x/subcpu/EDCD_DOOM.32X` | `discs/D32XR_CD32X_R2_cartED/` | `cc0edfe` + ED-SAVE `3de1cc9` (always on with `CART=ED`: its 68000 program reads/writes bank 31 itself through CTRL1 - save piece 11, record piece 15; the launcher's Sub-CPU routes CMD 61; `EDCD_SAVE=1` exported for the RA header). Compiled here with stub headers, **never built with data nor run**. Not on S: yet. |
+| D32XR (Doom) | D32XR_CD32X | `CART=ED EDCD=1` | `cd32x/subcpu/EDCD_DOOM.32X` | `discs/D32XR_CD32X_R2_EDCD_DOOM/` | `cc0edfe` + ED-SAVE `3de1cc9` (always on with `CART=ED`: its 68000 program reads/writes bank 31 itself through CTRL1 - save piece 11, record piece 15; the launcher's Sub-CPU routes CMD 61; `EDCD_SAVE=1` exported for the RA header). Now **on S:** (`D32XR_CD32X`, the folder with the WADs): its 7 ED files copied, the two protected `Makefile`s edited in place, build line in `buildcmd_edcd_save.txt`. The S: copy was **ahead** of GitHub in four files (SIGIL in the ROM / `ROMMAPS`, the 4 MB board, the test switches): imported as `e4940b3` and `build.sh` merged in `05daa01`. Compiled here with stub headers, **never built with data nor run**. |
 | Sonic CD 2011 | Sonic2011CD32X (private) | - | - | - | **Not started.** Its 16 MB layout puts act-file slots and the menu's tail in page 7 (the fourth slot is exactly bank 31): needs a new page plan first, and its own rule - every disc proven in its sh2emu model (which models the PCB mapper, not the EverDrive's windows). |
 
 Build lines (WSL), all with `BOOTCAMP=/mnt/s/KoboPort/sega-toolchain-12.1/sega/CD32X-BootCamp`:
 `CART=ED EDCD=1 EDCD_SAVE=1 BOOTCAMP=... bash .../OpenJazzCD32X-REV/build.sh`,
 `HURRICAN_DATA=.../HurricanCD32X/HurricanData CART=ED EDCD=1 EDCD_SAVE=1 BOOTCAMP=... bash .../HurricanCD32X_ED/build.sh`,
 `SUPERTUX=.../SuperTuxCD32X_REV/SuperTux-0.1.3 CART_MB=ED EDCD=1 EDCD_SAVE=1 BOOTCAMP=... bash .../SuperTuxCD32X_ED/build.sh`,
-`CART=ED EDCD=1 BOOTCAMP=... bash .../D32XR_CD32X/build.sh` (OpenLara: `buildcmd_edsave.txt` in its folder).
+`CART=ED EDCD=1 BOOTCAMP=... bash .../D32XR_CD32X/build.sh` (ED-SAVE is always on with `CART=ED` there).
+Each S: folder has the line ready in its `buildcmd_edcd_save.txt` (OpenLara: `buildcmd_edsave.txt`).
 
 ## ED-SAVE: done in every game (26 Oct, 09:35-11:10), proven only in OpenLara
 
@@ -118,9 +126,14 @@ Fast loading across relaunches cannot work (PSRAM wiped); within a session it do
 - SuperTux's `build.sh` takes the version name with `sed` from `game/stx.h`: no comment on the
   `#define STX_VERSION_*` line.
 - `device_commit_files` may serve a stale staged file by path: stage under a new file name.
-- The user's S: folders may be plain copies, not git checkouts, and may be older than GitHub.
+- The user's S: folders may be plain copies, not git checkouts, and may differ from GitHub **in
+  either direction**: Doom's S: folder held four files no commit had (the SIGIL / ROM-map work).
+  **Never overwrite a whole S: folder.** md5 every source file on S: against the repo's history
+  first (`git log --format=%h -- <file>` and compare each blob); a file that matches no commit is
+  work only S: has - import it, then merge (`git merge-file`), then copy back.
   The device shell cannot reach GitHub (proxy 403): copy changed files to S: with the device tools
-  and compare md5s.
+  and compare md5s. The `Makefile`s on S: are protected: edit them in place with device python
+  (idempotent - check for the switch's name first).
 - SuperTux's `check_boot.py` strips the `#if STX_CART_PAGED` block up to the `#endif` before
   `cmd == 53` (ED-SAVE has `#ifdef CART_EDSAVE` inside); its md5 is in the script.
 
