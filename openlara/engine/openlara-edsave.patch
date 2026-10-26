@@ -1,0 +1,194 @@
+diff --git a/src/platform/32x/main.cpp b/src/platform/32x/main.cpp
+--- a/src/platform/32x/main.cpp
++++ b/src/platform/32x/main.cpp
+@@ -434,8 +434,89 @@
+ #define CS_EVEN(x)      (((x) + 1) & ~1)
+ 
+ 
++/* ---------------------------------------------------------------------------------------
++ * EDSAVE-1 (CART=ED builds, CD32X_CART_ED): the Mega EverDrive PRO wipes its PSRAM - the whole
++ *   RAM cart - every time its menu runs, so a save there never outlived the session.  Its bank
++ *   31 is battery RAM that the EverDrive OS keeps on the SD card (bram.srm); the cartridge-boot
++ *   Sub-CPU (EDSAVE=1) puts the save area and the slots there, with the same piece numbers.
++ *   The SH2 cannot see that bank, so every read of a save piece goes through the Sub-CPU:
++ *   CMD 62 brings the piece into its 4 KB buffer, CMD 57 hands out its words.  Writes were
++ *   through the Sub-CPU already (CMD 58 + 61).  CMD 62 with COMM2 = 0x8000 only asks: bit 9
++ *   set = the saves are in the bank (gSaveBank 1), else the cart is read directly as before.
++ * --------------------------------------------------------------------------------------- */
++#ifndef CD32X_CART_ED
++#define CD32X_CART_ED 0
++#endif
++#define CS_CMD_GET      57
++#define CS_CMD_PIECE_IN 62
++static int32 gSaveBank = CD32X_CART_ED ? -1 : 0;   /* -1 not asked yet, 0 the cart, 1 the bank */
++static int32 rdPiece = -1;                         /* the piece in the Sub-CPU's buffer */
++static int32 csPieceOf(uint32 ofs);
++static uint32 csPieceBase(int32 piece);
++
++/* EDSAVE-2: the slave SH2 idle and its sound DMA off while the 68000 holds the cart (RV = 1) for a
++   save command.  The level loads always did this (MARS_WAIT, sfxBankStop) and run dozens of such
++   copies; the saves did not, and on the console a copy made while the slave draws and mixes froze
++   the game (25 Oct 2026, the passport: a few reads of the save bank, then nothing).  Nested, so a
++   run of commands parks once. */
++void sfxBankStop();
++void sfxBankStart();
++int32 sfxBankOn();
++static int32 csParkDepth = 0, csSfxWas = 0;
++static void csPark()
++{
++    if (csParkDepth++ == 0)
++    {
++        csSfxWas = sfxBankOn();
++        sfxBankStop();                           /* the DMA 1 -> PWM mixer off (it reads the cart) */
++        MARS_WAIT();                             /* the slave between commands: no cart reads */
++    }
++}
++static void csUnpark()
++{
++    if (--csParkDepth == 0 && csSfxWas) sfxBankStart();
++}
++
++static void saveBankQuery()
++{
++    MARS_SYS_COMM2 = 0x8000;
++    CD_COMM12_16 = 0;
++    cdCmd(CS_CMD_PIECE_IN);
++    gSaveBank = (CD_COMM12_16 & 0x200) ? 1 : 0;
++}
++
++static void saveBankRead(uint32 ofs, uint8* dst, int32 len)            /* ofs even */
++{
++    while (len > 0)
++    {
++        int32 piece = csPieceOf(ofs);
++        uint32 base = csPieceBase(piece);
++        int32 o = int32(ofs - base);
++        int32 n = (len < 4096 - o) ? len : (4096 - o);
++        if (piece != rdPiece)
++        {
++            MARS_SYS_COMM2 = (uint16)piece;
++            csPark();                            /* EDSAVE-2 */
++            cdCmd(CS_CMD_PIECE_IN);
++            csUnpark();
++            rdPiece = piece;
++        }
++        for (int32 i = 0; i < n; i += 2)
++        {
++            MARS_SYS_COMM2 = (uint16)((o + i) >> 1);
++            cdCmd(CS_CMD_GET);
++            uint16 w = MARS_SYS_COMM8;
++            dst[i] = (uint8)(w >> 8);
++            if (i + 1 < n) dst[i + 1] = (uint8)w;
++        }
++        ofs += n; dst += n; len -= n;
++    }
++}
++
+ static void cartRead(uint32 ofs, uint8* dst, int32 len)               /* ofs even */
+ {
++    if (gSaveBank < 0) saveBankQuery();                                /* EDSAVE-1 */
++    if (gSaveBank > 0) { saveBankRead(ofs, dst, len); return; }
+     volatile uint16* s = (volatile uint16*)(CS_BASE + ofs);
+     for (int32 i = 0; i < len; i += 2)
+     {
+@@ -469,6 +550,15 @@
+     return (piece & CS_SLOT_PIECE) ? CS_SLOTS + uint32(piece & 31) * CS_PIECE : CS_SET + uint32(piece) * CS_PIECE;
+ }
+ 
++static int32 csPieceOf(uint32 ofs)                   /* EDSAVE-1: the piece an offset is in */
++{
++    return (ofs >= CS_SLOTS && ofs < CS_SLOTS + CS_SLOT_COUNT * CS_SLOT_SIZE)
++         ? (CS_SLOT_PIECE | int32((ofs - CS_SLOTS) >> 12))
++         : int32(ofs - CS_SET) >> 12;
++}
++
++static void csSlotsChanged();
++
+ static void csFlushPiece()
+ {
+     if (csPiece < 0 || !csDirty) return;
+@@ -480,9 +570,13 @@
+     }
+     MARS_SYS_COMM2 = (uint16)csPiece;
+     CD_COMM12_16 = 0;
++    csPark();                                        /* EDSAVE-2 */
+     cdCmd(CS_CMD_TO_CART);
++    csUnpark();
+     if ((CD_COMM12_16 & 0xFF) != 1) csOk = false;
+-    if ((csPiece & CS_SLOT_PIECE) && CD_COMM12_16 != 0x101) csOk = false;   /* SLOTS-1 */
++    if ((csPiece & CS_SLOT_PIECE) && (CD_COMM12_16 & 0x1FF) != 0x101) csOk = false;   /* SLOTS-1 */
++    rdPiece = -1;                                    /* EDSAVE-1: the Sub-CPU's buffer is ours now */
++    csSlotsChanged();                                /* EDSAVE-1: a slot's level may have changed */
+     csDirty = false;
+ }
+ 
+@@ -521,6 +615,12 @@
+ 
+ static uint32 cartRead32(uint32 ofs)
+ {
++    if (gSaveBank != 0)                              /* EDSAVE-1 */
++    {
++        uint8 b[4];
++        cartRead(ofs, b, 4);
++        return ((uint32)b[0] << 24) | ((uint32)b[1] << 16) | ((uint32)b[2] << 8) | b[3];
++    }
+     volatile uint16* s = (volatile uint16*)(CS_BASE + ofs);
+     return ((uint32)s[0] << 16) | s[1];
+ }
+@@ -594,6 +694,8 @@
+ #ifdef CD32X_NO_SLOTS
+     return 0;
+ #else
++    if (gSlotsOk < 0 && gSaveBank < 0) saveBankQuery();   /* EDSAVE-1 */
++    if (gSlotsOk < 0 && gSaveBank > 0) gSlotsOk = 1;      /* EDSAVE-1: the bank's Sub-CPU has the slots */
+     if (gSlotsOk < 0)
+     {
+         csFlushPiece();
+@@ -610,7 +712,14 @@
+ #endif
+ }
+ 
+-int32 osSaveSlotLevel(int32 slot)           /* the level saved in a slot, -1 = empty */
++/* EDSAVE-1: the passport draws every listed slot's level EVERY FRAME (OPT_SLOT), and a read of the
++   save bank is a Sub-CPU round trip per piece and per word: 16 slots per frame froze the save page
++   on the console (25 Oct 2026).  So the levels are read once and kept; a write to the save area
++   (csFlushPiece) forgets them. */
++static int32 slotLevel[CS_SLOT_COUNT + 1];   /* [16] = the old single save (slot -1) */
++static bool  slotLevelKnown[CS_SLOT_COUNT + 1];
++
++static int32 slotLevelRead(int32 slot)
+ {
+     uint32 b = slotBase(slot);
+     if (cartRead32(b) != 0x4F4C474D) return -1;                /* 'OLGM' */
+@@ -622,6 +731,23 @@
+     return tmp.level;
+ }
+ 
++static void csSlotsChanged()
++{
++    for (int32 i = 0; i <= CS_SLOT_COUNT; i++) slotLevelKnown[i] = false;
++}
++
++int32 osSaveSlotLevel(int32 slot)           /* the level saved in a slot, -1 = empty */
++{
++    int32 k = (slot < 0) ? CS_SLOT_COUNT : slot;
++    if (k > CS_SLOT_COUNT) return slotLevelRead(slot);
++    if (!slotLevelKnown[k])
++    {
++        slotLevel[k] = slotLevelRead(slot);
++        slotLevelKnown[k] = true;
++    }
++    return slotLevel[k];
++}
++
+ bool osCheckSave()
+ {
+     return osSaveSlotLevel(gSaveSlot) >= 0;
+@@ -1116,6 +1242,7 @@
+ void sfxBankStop();
+ #include "fmv.inc"                  /* FMV-1: the movie player (osPlayVideo, fmvAudio) */
+ #include "sfx.inc"                  /* SFX-2: the sound effects through the 32X PWM */
++int32 sfxBankOn() { return gSfxOn; }   /* EDSAVE-2: for csPark */
+ #endif
+ 
+ extern "C" void pri_vbi_handler()

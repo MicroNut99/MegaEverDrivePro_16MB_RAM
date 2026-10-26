@@ -1,0 +1,364 @@
+diff --git a/ares/md/CMakeLists.txt b/ares/md/CMakeLists.txt
+index 66f7ca1..95e8ea9 100644
+--- a/ares/md/CMakeLists.txt
++++ b/ares/md/CMakeLists.txt
+@@ -73,6 +73,7 @@ ares_add_sources(
+     cartridge/board/board.cpp
+     cartridge/board/board.hpp
+     cartridge/board/debugger.cpp
++    cartridge/board/everdrive-pro.cpp
+     cartridge/board/game-genie.cpp
+     cartridge/board/j-cart.cpp
+     cartridge/board/linear.cpp
+diff --git a/ares/md/cartridge/board/board.cpp b/ares/md/cartridge/board/board.cpp
+index 6440a6e..9483f16 100644
+--- a/ares/md/cartridge/board/board.cpp
++++ b/ares/md/cartridge/board/board.cpp
+@@ -7,6 +7,7 @@ namespace Board {
+ #include "j-cart.cpp"
+ #include "realtec.cpp"
+ #include "game-genie.cpp"
++#include "everdrive-pro.cpp"
+ #include "mega-32x.cpp"
+ #include "debugger.cpp"
+ 
+diff --git a/ares/md/cartridge/board/everdrive-pro.cpp b/ares/md/cartridge/board/everdrive-pro.cpp
+new file mode 100644
+index 0000000..6a58805
+--- /dev/null
++++ b/ares/md/cartridge/board/everdrive-pro.cpp
+@@ -0,0 +1,190 @@
++//Mega EverDrive PRO (krikzz) in its extended SSF mode: 16 MB of RAM in 32 banks of 512 KB,
++//switched into the eight 512 KB windows of the 4 MB cartridge space.
++//
++//Checked on a console (Genesis + 32X + Mega EverDrive PRO, CD32X BootCamp edtest, 24 Oct 2026):
++//  - the mapper is on for a ROM whose header says "SEGA SSF" (0x100), started from the EverDrive menu;
++//  - CTRL0 = 0xa000 (P + W) and 0xe000 (P + X + W) both work: word writes by the 68000, RV = 1;
++//  - CTRL1-7 put a bank (1-27 tested) into each window of cart 0x080000-0x3fffff;
++//  - the 68000 writes the banks (RV = 1) and reads back what it wrote after all the other banks
++//    were switched in and out; both SH2s read the same data at 0x22000000 + the window's offset.
++//Not checked on a console, so the choices below are guesses: banks 0 and 28-31, CTRL0's bank field,
++//the C (#CART) and L (LED) bits, byte writes to the registers, W = 0 write protection, the state
++//after a console reset, and whether the memory keeps its contents.
++//
++//Registers (write-only, in /TIME space):
++//  0xa130f0      CTRL0  P X W L C . . . . . . R R R R R  - taken only when P (bit 15) is 1
++//                P protection, X 32X mode (no effect seen), W write enable, L LED,
++//                C #CART: 1 = CART_IN released, the console sees no cartridge (a Mega CD then
++//                boots its disc and the cart moves to 0x400000), R the bank in window 0
++//  0xa130f2-fe   CTRL1-7  bits 0-4: the bank in window 1-7
++//A byte write to 0xa130f1 (the old SRAM switch of Sega's mapper) carries its byte on D8-D15 as
++//well, so P is that byte's bit 7: ordinary SRAM switch values are ignored.
++//Banks: 31 is the PRO's save RAM (kept on its SD card), 28's first 32 KB is a save area, 30-31 hold
++//the EverDrive's own software. Games keep out of 28-31.
++//
++//Three ways the board is used (pak attributes):
++//  - cartridge (mia, "SEGA SSF" ROM): the ROM at the start of the memory, booted (CART_IN asserted),
++//    W = 0 until the game sets it; bank 31 is the game's save RAM ("save.ram"), the rest is blank;
++//  - RAM cart for a Sega CD 32X disc (ramcart, not bootable): the state a launcher ROM leaves
++//    (W = 1, C = 1, banks 0-7 in windows 0-7), so the disc boots and finds a 16 MB RAM cart;
++//    all 16 MB come from and go back to "ram.cart";
++//  - launcher (ramcart, bootable, "program.rom"): as the RAM cart, but the console first boots the
++//    launcher ROM from bank 0 (W = 0, C = 0, as the EverDrive menu starts it); the launcher sets
++//    the registers and C itself. After a reset the launcher is put back in bank 0, as starting it
++//    again from the EverDrive menu would.
++
++struct EverDrivePro : Interface {
++  using Interface::Interface;
++  Memory::Writable<n16> ram;     //16 MB: bank n is words n << 18 ... (n << 18) + 0x3ffff
++  n5 bank[8];                    //the bank in each 512 KB window
++  n1 mode32x;                    //X
++  n1 writeEnable;                //W
++  n1 led;                        //L
++  n1 cartOff;                    //C: CART_IN released
++  boolean ramCart;               //"ram.cart" holds all 16 MB
++  boolean cdBoot;                //RAM cart use: starts as a launcher left it
++  std::vector<u8> program;       //the ROM booted at power-on (cartridge and launcher use)
++
++  static constexpr u32 SaveBank = 31;
++
++  auto load() -> void override {
++    ram.allocate(16_MiB >> 1, 0xffff);
++    ramCart = pak->attribute("ramcart").boolean();
++    cdBoot  = ramCart && !pak->attribute("bootable").boolean();
++
++    if(ramCart) {
++      if(auto fp = pak->read("ram.cart")) {
++        u32 words = min((u32)(fp->size() >> 1), ram.size());
++        for(u32 address : range(words)) ram.write(address, fp->readm(2L));
++      }
++    }
++
++    program.clear();
++    if(auto fp = pak->read("program.rom")) {
++      program.resize(min((u32)fp->size(), (u32)16_MiB));
++      fp->read({program.data(), program.size()});
++      putProgram();
++    }
++
++    if(!ramCart) {
++      if(auto fp = pak->read("save.ram")) {
++        u32 words = min((u32)(fp->size() >> 1), 0x40000u);
++        for(u32 address : range(words)) ram.write(SaveBank << 18 | address, fp->readm(2L));
++      }
++    }
++  }
++
++  auto save() -> void override {
++    if(ramCart) {
++      if(auto fp = pak->write("ram.cart")) {
++        fp->seek(0);
++        u32 words = min((u32)(fp->size() >> 1), ram.size());
++        for(u32 address : range(words)) fp->writem(ram[address], 2L);
++      }
++    } else if(auto fp = pak->write("save.ram")) {
++      fp->seek(0);
++      u32 words = min((u32)(fp->size() >> 1), 0x40000u);
++      for(u32 address : range(words)) fp->writem(ram[SaveBank << 18 | address], 2L);
++    }
++  }
++
++  //the ROM into the start of the memory, as the EverDrive loads a game from its SD card
++  auto putProgram() -> void {
++    for(u32 address = 0; address + 1 < program.size(); address += 2) {
++      ram.write(address >> 1, program[address] << 8 | program[address + 1]);
++    }
++  }
++
++  //A1-A21: the cart sees the same 4 MB whether it is reached at 0x000000 (cartridge boot),
++  //0x400000 (a Mega CD booted its disc) or through the 32X (0x880000, 0x900000, the SH2's 0x02000000)
++  auto offset(n24 address) const -> u32 {
++    n22 local = address;
++    return (u32)bank[local >> 19] << 19 | (u32)(n19)local;
++  }
++
++  auto read(n1 upper, n1 lower, n24 address, n16 data) -> n16 override {
++    return ram[offset(address) >> 1];
++  }
++
++  auto write(n1 upper, n1 lower, n24 address, n16 data) -> void override {
++    if(!writeEnable) return;
++    u32 word = offset(address) >> 1;
++    if(upper) ram[word].byte(1) = data.byte(1);
++    if(lower) ram[word].byte(0) = data.byte(0);
++    u32 local = (n22)address;
++    invalidate(local & ~1u, 2);
++  }
++
++  auto readIO(n1 upper, n1 lower, n24 address, n16 data) -> n16 override {
++    return data;  //the registers are write-only
++  }
++
++  auto writeIO(n1 upper, n1 lower, n24 address, n16 data) -> void override {
++    if(address < 0xa130f0 || address > 0xa130ff) return;
++    u32 n = address >> 1 & 7;
++    if(n == 0) {
++      if(!data.bit(15)) return;  //P must be set
++      mode32x     = data.bit(14);
++      writeEnable = data.bit(13);
++      led         = data.bit(12);
++      setCart(data.bit(11));
++      setBank(0, data.bit(0,4));
++      return;
++    }
++    //the bank is on D0-D4: a word write, or a byte write to the odd address (an even-byte write
++    //carries the same byte on D0-D7, but whether the EverDrive takes it is not known)
++    if(!lower) return;
++    setBank(n, data.bit(0,4));
++  }
++
++  auto setBank(u32 n, n5 value) -> void {
++    if(bank[n] == value) return;
++    bank[n] = value;
++    invalidate(n << 19, 0x80000);
++  }
++
++  auto setCart(n1 value) -> void {
++    cartOff = value;
++    cartridge->cartOff = value;  //Cartridge::bootable() follows it at once
++  }
++
++  //code the SH2 recompiler built from this window is stale now (the cache-through mirror is never
++  //purged by a game, so it has to be dropped here; the cached mirror too, to be safe)
++  auto invalidate(u32 local, u32 size) -> void {
++    if constexpr(SH2::Accuracy::Recompiler) {
++      if(!Mega32X()) return;
++      for(u32 address = local & ~0xff; address < local + size; address += 0x100) {
++        u32 first = max(address, local), last = min(address + 0x100, local + size);
++        u8 bytes = min(last - first, 0xffu);  //one 256-byte pool at a time; 255 covers all of it
++        for(u32 mirror : {0x0200'0000u, 0x2200'0000u}) {
++          m32x.shm.recompiler.invalidate(mirror | first, bytes);
++          m32x.shs.recompiler.invalidate(mirror | first, bytes);
++        }
++      }
++    }
++  }
++
++  auto power(bool reset) -> void override {
++    for(u32 n : range(8)) bank[n] = n;
++    mode32x = 0;
++    led = 0;
++    if(cdBoot) {
++      writeEnable = 1;
++      setCart(1);
++    } else {
++      writeEnable = 0;
++      setCart(0);
++      if(reset && ramCart && !program.empty()) putProgram();  //launcher: started again from the menu
++    }
++  }
++
++  auto serialize(serializer& s) -> void override {
++    s(ram);
++    s(bank);
++    s(mode32x);
++    s(writeEnable);
++    s(led);
++    s(cartOff);
++    if(s.reading()) cartridge->cartOff = cartOff;
++  }
++};
+diff --git a/ares/md/cartridge/board/mega-32x.cpp b/ares/md/cartridge/board/mega-32x.cpp
+index 0120974..4d35072 100644
+--- a/ares/md/cartridge/board/mega-32x.cpp
++++ b/ares/md/cartridge/board/mega-32x.cpp
+@@ -3,7 +3,9 @@ struct Mega32X : Interface {
+   std::unique_ptr<Board::Interface> board;
+ 
+   auto load() -> void override {
+-    if(pak) {
++    if(pak && pak->attribute("everdrive").boolean()) {
++      board = std::make_unique<Board::EverDrivePro>(*cartridge);  //SSF ROM, or the EverDrive as RAM cart
++    } else if(pak) {
+       board = std::make_unique<Board::Standard>(*cartridge);
+     } else {
+       board = std::make_unique<Board::Interface>(*cartridge);
+diff --git a/ares/md/cartridge/cartridge.cpp b/ares/md/cartridge/cartridge.cpp
+index 944372c..86f4c35 100644
+--- a/ares/md/cartridge/cartridge.cpp
++++ b/ares/md/cartridge/cartridge.cpp
+@@ -15,6 +15,7 @@ auto Cartridge::connect() -> void {
+   if(!node->setPak(pak = platform->pak(node))) return;
+ 
+   information = {};
++  cartOff = 0;
+   information.title    = pak->attribute("title");
+   auto region = pak->attribute("region");
+   information.regions  = nall::split_and_strip(region, ",");
+@@ -22,6 +23,8 @@ auto Cartridge::connect() -> void {
+ 
+   if(pak->attribute("mega32x").boolean()) {
+     board = std::make_unique<Board::Mega32X>(*this);
++  } else if(pak->attribute("everdrive").boolean() || pak->attribute("board") == "EVERDRIVE-PRO") {
++    board = std::make_unique<Board::EverDrivePro>(*this);
+   } else if(pak->read("svp.rom")) {
+     board = std::make_unique<Board::SVP>(*this);
+   } else if(pak->attribute("label") == "Game Genie") {
+@@ -48,6 +51,7 @@ auto Cartridge::disconnect() -> void {
+   pak.reset();
+   node.reset();
+   information = {};
++  cartOff = 0;
+ }
+ 
+ auto Cartridge::save() -> void {
+diff --git a/ares/md/cartridge/cartridge.hpp b/ares/md/cartridge/cartridge.hpp
+index af40e8e..6090d70 100644
+--- a/ares/md/cartridge/cartridge.hpp
++++ b/ares/md/cartridge/cartridge.hpp
+@@ -7,7 +7,9 @@ struct Cartridge : Thread {
+ 
+   auto title() const -> string { return information.title; }
+   auto regions() const -> std::vector<string> { return information.regions; }
+-  auto bootable() const -> boolean { return information.bootable; }  //CART_IN line
++  //CART_IN line. A board can release it while the console runs (EverDrive PRO: CTRL0's C bit),
++  //which turns a cartridge boot into a Mega CD boot (mode 1 to mode 2).
++  auto bootable() const -> boolean { return information.bootable && !cartOff; }
+ 
+   //cartridge.cpp
+   auto allocate(Node::Port) -> Node::Peripheral;
+@@ -39,6 +41,7 @@ struct Cartridge : Thread {
+ 
+   std::unique_ptr<Board::Interface> board;
+   maybe<Board::Interface&> child;
++  n1 cartOff;  //set by the board: CART_IN released
+ };
+ 
+ #include "slot.hpp"
+diff --git a/ares/md/m32x/io-internal.cpp b/ares/md/m32x/io-internal.cpp
+index e65c35a..018121a 100644
+--- a/ares/md/m32x/io-internal.cpp
++++ b/ares/md/m32x/io-internal.cpp
+@@ -16,7 +16,9 @@ auto M32X::readInternalIO(n1 upper, n1 lower, n29 address, n16 data) -> n16 {
+       data.bit(3) = shs.irq.vint.enable;
+     }
+     data.bit( 7) = io.hintVblank;
+-    data.bit( 8) = !(bool)cartridge.child->pak;  //0 = cartridge connected
++    //0 = cartridge connected. This is the CART_IN line, not "something is in the slot": a cart that
++    //releases it (EverDrive PRO: CTRL0's C bit) lets the SH2 boot ROMs take the CD boot path ("_CD_")
++    data.bit( 8) = !((bool)cartridge.child->pak && cartridge.bootable());
+     data.bit( 9) = io.adapterEnable;
+     data.bit(15) = vdp.framebufferAccess;
+   }
+diff --git a/mia/medium/mega-32x.cpp b/mia/medium/mega-32x.cpp
+index cad4e50..0cc10af 100644
+--- a/mia/medium/mega-32x.cpp
++++ b/mia/medium/mega-32x.cpp
+@@ -6,6 +6,8 @@ struct Mega32X : Cartridge {
+   auto analyze(std::vector<u8>& rom) -> string;
+   auto analyzeStorage(std::vector<u8>& rom, string hash) -> void;
+ 
++  bool everdrive = false;  //"SEGA SSF": the Mega EverDrive PRO's extended SSF mapper
++
+   struct RAM {
+     explicit operator bool() const { return mode && size != 0; }
+ 
+@@ -44,6 +46,7 @@ auto Mega32X::load(string location) -> LoadResult {
+   pak->setAttribute("region",   document["game/region"].string());
+   pak->setAttribute("bootable", true);
+   pak->setAttribute("mega32x",  true);
++  pak->setAttribute("everdrive", everdrive);
+   auto deviceList = document["game/device"].string();
+   auto devices = nall::split(deviceList, ", ");
+   pak->setAttribute("megacd",   (bool)(std::ranges::find(devices, string{"Mega CD"}) != devices.end()));
+@@ -98,6 +101,17 @@ auto Mega32X::analyze(std::vector<u8>& rom) -> string {
+   auto hash = Hash::SHA256(rom).digest();
+   analyzeStorage(rom, hash);
+ 
++  //"SEGA SSF" in the header: the Mega EverDrive PRO's extended SSF mapper (16 MB, writable).
++  //Its save RAM is bank 31 (512 KB), whatever the header's SRAM entry says.
++  everdrive = !memory::compare(&rom[0x100], "SEGA SSF", 8);
++  if(everdrive) {
++    eeprom = {};
++    ram = {};
++    ram.mode = "word";
++    ram.address = 0;
++    ram.size = 0x80000;
++  }
++
+   std::vector<string> devices;
+   string device = slice((const char*)&rom[0x190], 0, 16).trimRight(" ");
+   for(auto& id : device) {
+diff --git a/mia/medium/mega-drive.cpp b/mia/medium/mega-drive.cpp
+index 5308a01..3341b29 100644
+--- a/mia/medium/mega-drive.cpp
++++ b/mia/medium/mega-drive.cpp
+@@ -136,6 +136,18 @@ auto MegaDrive::analyze(std::vector<u8>& rom) -> string {
+   analyzeCopyProtection(rom, hash);
+   analyzeRegion(rom, hash);
+ 
++  //"SEGA SSF" in the header: the Mega EverDrive PRO's extended SSF mapper (16 MB, writable).
++  //Its save RAM is bank 31 (512 KB), whatever the header's SRAM entry says.
++  if(!memory::compare(&rom[0x100], "SEGA SSF", 8)) {
++    board = "EVERDRIVE-PRO";
++    eeprom = {};
++    ram = {};
++    ram.mode = "word";
++    ram.address = 0;
++    ram.size = 0x80000;
++    ram.enable = 1;
++  }
++
+   std::vector<string> devices;
+   string device = slice((const char*)&rom[0x190], 0, 16).trimRight(" ");
+   if(device == "OJKRPTBVFCA") {
