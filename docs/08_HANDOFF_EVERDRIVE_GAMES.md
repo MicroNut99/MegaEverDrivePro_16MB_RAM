@@ -1,6 +1,6 @@
 # 08 – Hand-off: building CD32X games for the Mega EverDrive PRO
 
-Written 26 Oct 2026, 09:30, updated 11:25 (ED-SAVE in every game; Doom on S:), for the next chat. The person you work with (MicroNut99) owns the
+Written 26 Oct 2026, 09:30, updated 12:55 (ED-SAVE in every game; Doom on S:; Hurrican's high scores found off the path), for the next chat. The person you work with (MicroNut99) owns the
 console and the EverDrive, burns the discs and runs the tests; you build and check everything
 first. Read this, then `docs/00`–`07` of this repository as needed.
 
@@ -79,7 +79,7 @@ default program is byte-identical after the merge.
 |---|---|---|---|---|---|
 | OpenLara REV | OpenLaraCD32X-REV `cart-test-8mb-16mb` (+ mirror OpenLaraCD32X-REV_EDCD) | `CART=ED EDCD=1 EDCD_SAVE=1` | `subcpu/EDCD_OPENLARA.32X` | `subcpu/CDROMPlayer_cartED_music.cue` | **Works on the console**: boots, plays, saves on the SD card (bank 31), in-game save/load/relaunch confirmed 26 Oct 01:02. Reference implementation. |
 | OpenJazz REV | OpenJazzCD32X-REV | `CART=ED EDCD=1 EDCD_SAVE=1` | `cd32x/subcpu/EDCD_JAZZ.32X` | `cd32x/subcpu/OpenJazzCD32X_cartED.cue` | ED-SAVE `243bd20` (CMD 61 to bank 31, CMD 62 piece in). On S:. **Not yet run on the console.** |
-| Hurrican | HurricanCD32X | `CART=ED EDCD=1 EDCD_SAVE=1` | `cd32x/subcpu/EDCD_HURRICAN.32X` | `cd32x/subcpu/HurricanP1q_cartED.cue` | ED-SAVE `b3e89c9` (Jazz's, carried over). S: clone `HurricanCD32X_ED` (data via `HURRICAN_DATA=`), build line in its `buildcmd_edcd_save.txt`. **Not yet run.** |
+| Hurrican | HurricanCD32X | `CART=ED EDCD=1 EDCD_SAVE=1` | `cd32x/subcpu/EDCD_HURRICAN.32X` | `cd32x/subcpu/HurricanP1q_cartED.cue` | ED-SAVE `b3e89c9` (Jazz's, carried over) **+ `98d0473`: its high scores rerouted from the Sega CD's backup RAM to save piece 12 in bank 31** - without it the ED build saved nothing a player would notice. S: clone `HurricanCD32X_ED` (data via `HURRICAN_DATA=`), build line in its `buildcmd_edcd_save.txt`. **Not yet run.** |
 | SuperTux REV | SuperTuxCD32X_REV | `CART_MB=ED EDCD=1 EDCD_SAVE=1` | `cd32x/subcpu/EDCD_SUPERTUX.32X` | `cd32x/subcpu/SuperTuxREV11-ED-T1.cue` | ED-SAVE `ab778e0` (CMD 69 - 62 is SET_VRAM there; `plat_save_read`; the probe's page-1 marker read from the bank; its `check_boot.py` md5s updated). S: clone `SuperTuxCD32X_ED` (data via `SUPERTUX=`), `buildcmd_edcd_save.txt`. **Not yet run.** |
 | D32XR (Doom) | D32XR_CD32X | `CART=ED EDCD=1` | `cd32x/subcpu/EDCD_DOOM.32X` | `discs/D32XR_CD32X_R2_EDCD_DOOM/` | `cc0edfe` + ED-SAVE `3de1cc9` (always on with `CART=ED`: its 68000 program reads/writes bank 31 itself through CTRL1 - save piece 11, record piece 15; the launcher's Sub-CPU routes CMD 61; `EDCD_SAVE=1` exported for the RA header). Now **on S:** (`D32XR_CD32X`, the folder with the WADs): its 7 ED files copied, the two protected `Makefile`s edited in place, build line in `buildcmd_edcd_save.txt`. The S: copy was **ahead** of GitHub in four files (SIGIL in the ROM / `ROMMAPS`, the 4 MB board, the test switches): imported as `e4940b3` and `build.sh` merged in `05daa01`. Compiled here with stub headers, **never built with data nor run**. |
 | Sonic CD 2011 | Sonic2011CD32X (private) | - | - | - | **Not started.** Its 16 MB layout puts act-file slots and the menu's tail in page 7 (the fourth slot is exactly bank 31): needs a new page plan first, and its own rule - every disc proven in its sh2emu model (which models the PCB mapper, not the EverDrive's windows). |
@@ -122,6 +122,30 @@ PC. Two things it does NOT model decide what a green run there is worth:
    console answers an SH2 cart access with garbage (`edsave3`, rule 8). A freeze of that class cannot
    appear in ares at all - it has to be found by reading the code, which is why the wait path was
    reviewed by hand (below).
+
+### What each game actually keeps, and whether ED-SAVE carries it (checked 26 Oct, Opus)
+
+Finding the save *code* correct is not the same as finding the game's save *covered* - they are
+different questions, and for Hurrican the answers differed.
+
+| Game | What it keeps | Through what | Carried to bank 31? |
+|---|---|---|---|
+| OpenLara REV | settings, game, 16 slots, records | cart pieces 0, 14 + its slot area | yes - console-proven |
+| OpenJazz REV | `OPENJAZZ.CFG`, `SAVE.0-3` (Holiday Hare: its own 5-9), port settings, cache ledger | cart pieces 0-10, CMD 58/61 + reads through `plat_save_read` | yes (`243bd20`) |
+| Hurrican | **the high-score table** - its only persistent state | **CMD 56 / 59: the CD BIOS's backup RAM** (`_BURAM`, `jsr 0x5F16`), file `OPENJAZZ_JJ` - *not* the cart save area | **it was not.** `b3e89c9` moved the cart save area, which Hurrican barely uses (piece 10, port settings). Fixed in `98d0473`: under `CART_EDSAVE` the Sub-CPU program routes CMD 56 / 59 to save piece 12 in bank 31 - engine unchanged, disc unchanged |
+| SuperTux REV | the save (piece 13), the probe's marker (15) | cart pieces, CMD 58/61 + `plat_save_read` | yes (`ab778e0`) |
+| D32XR (Doom) | the save (piece 11), the preload record (15) | its own 68000 program (`crt0.s`) | yes (`3de1cc9`) |
+| Sonic CD 2011 | everything (512 bytes) | **backup RAM only** (`SONICCD32X_`) | **no** - it will keep nothing on the EverDrive until CMD 56 / 59 are rerouted the way Hurrican's now are |
+
+The general rule, now in the BootCamp's `docs/02`: **the Sega CD's internal backup RAM has nothing to
+do with the EverDrive's save bank.** Whatever ED-SAVE does to the cart save area, a title that keeps
+its state in backup RAM saves nothing on a launcher build until CMD 56 / 59 are redirected to a save
+piece. That redirect lives entirely in the Sub-CPU program, so it costs the engine nothing.
+
+Left open deliberately: on the **disc** build Hurrican's backup-RAM file is still named
+`OPENJAZZ_JJ` (OpenJazz's), so the two titles share one file in the console's 8 KB of internal
+backup RAM, and Hurrican reserves 4 KB of it for a 128-byte table. Renaming it would strand whatever
+is saved under the old name, so it is a decision for MicroNut99, not a silent fix.
 
 ### The hand review of Fable's save work (26 Oct, 11:30-11:35, Opus) - no defects found
 
