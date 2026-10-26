@@ -16,6 +16,13 @@ session and was gone at the next launch.
 `MEGA/gamedata/<launcher name>/bram.srm` and loads it back at the next launch (seen on the card after
 the probe's second run: `bram.srm`, 256 KB). Layout in the bank, the same piece numbers as before:
 
+**The launcher's file name IS the save's name** (MicroNut99, console, 26 Oct 2026): rename the
+launcher and it launches with a new, empty save - in OpenLara a fresh passport with its 8 slots -
+while the launcher under the old name keeps its own `bram.srm` next to it. Nothing is lost or left
+dangling: each name is simply its own save file, and renaming back brings the old one up again. So a
+launcher name per build (`EDCD_DOOM.32X`, `EDCD_DOOM_SIGIL.32X`, ...) is what keeps two variants'
+saves apart - and is also the way to keep a second, parallel set of slots on purpose.
+
 | Bank offset | What |
 |---|---|
 | `0x00000` | the 64 KB save area: `OLST` settings at 0, the old single save at `0x400`, the fast-load records in piece 14 |
