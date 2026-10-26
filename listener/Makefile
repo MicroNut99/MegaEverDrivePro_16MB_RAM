@@ -72,6 +72,12 @@ endif
 # MODE1-7: M1SAVE=1 - cart 0x800000-0x83FFFF = the EverDrive's save bank (31, kept on the SD card)
 ifeq ($(M1SAVE),1)
 ASFLAGS += --defsym OL_M1SAVE=1
+ifdef M1SAVEBANK
+ASFLAGS += --defsym OL_M1SAVEBANK=$(M1SAVEBANK)   # MODE1-7b: another bank (27 = PSRAM, a test)
+endif
+ifdef M1SAVEWIN
+ASFLAGS += --defsym OL_M1SAVEWIN=$(M1SAVEWIN)     # MODE1-7b: through another window (1-7)
+endif
 endif
 endif
 
