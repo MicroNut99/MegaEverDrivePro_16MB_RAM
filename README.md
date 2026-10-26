@@ -1,4 +1,4 @@
-# Mega EverDrive PRO as a 16 MB RAM cart for the Sega CD 32X
+# Mega EverDrive PRO (and X7) as a 16 MB RAM cart for the Sega CD 32X
 
 Everything learned and built to make the **Mega EverDrive PRO** serve as the 16 MB RAM cart of a
 CD32X disc (Genesis + Sega CD + 32X): the facts measured on the console, the launcher that boots a
@@ -79,6 +79,14 @@ CART=ED EDCD=1 EDCD_SAVE=1 EDCD_DIAG=1 bash build.sh   # the same launcher with 
 The probes build on their own: `bash probes/edtest/build.sh`, `bash probes/edw0/build.sh`,
 `bash probes/edsave/build.sh`, `bash probes/edsave2/build.sh`, `bash probes/edsave3/build.sh` (no disc, run from the EverDrive menu
 with the 32X attached).
+
+## Also the Mega EverDrive X7
+
+Everything here was measured on the PRO; on 26 Oct 2026 MicroNut99 ran the same `edtest`, the
+OpenLara launcher and disc, and a save through a reset on a **Mega EverDrive X7**: it works the
+same way - the X series' extended SSF mapper takes the same registers and the same rules, and
+the X7 keeps the save bank as the PRO does (the launcher's `RA` header, the OS's backup-RAM
+file). So "the EverDrive" below means the PRO and the X7; the newer CORE is untested.
 
 ## The facts in one place (all measured on a console, 24-26 Oct 2026)
 

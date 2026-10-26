@@ -28,6 +28,12 @@ first. Read this, then `docs/00`–`07` of this repository as needed.
   committed and pushed.
 - No OutRun (Cannonball) and no Diablo (Devilution): they said so.
 
+## Which carts
+
+The Mega EverDrive **PRO** (everything was measured on it) and the **X7** (26 Oct 2026, 10:36: the
+user ran `edtest`, the OpenLara launcher + disc and a save through a reset on an X7 - all as on
+the PRO, the save kept). Treat "the EverDrive" as both. The new CORE is untested.
+
 ## What the EverDrive is, in one paragraph (docs/01)
 
 A `SEGA SSF` ROM turns the EverDrive's extended mapper on: 32 banks of 512 KB in eight windows,
