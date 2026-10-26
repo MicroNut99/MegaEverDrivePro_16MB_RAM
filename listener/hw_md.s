@@ -70,6 +70,17 @@
         .ifndef OL_M1SAVEWIN
         .equ    OL_M1SAVEWIN, 1
         .endif
+| MODE1-9 (M1PAGE=1, with MODE1=1): the paged cart's page registers on the EverDrive.  The paged games
+| (OpenJazz, Hurrican, SuperTux, Sonic CD) switch 2 MB pages by one byte written with RV = 1 to 0xA130F2
+| (window 1 = cart 0x200000-0x3FFFFF) or 0xA130F0 (window 0), through the listener's safe_cart_xfer.  On
+| the EverDrive those addresses are CTRL0/CTRL1 and a page is four of its 512 KB banks: page p in
+| window 1 = CTRL4..7 = 4p..4p+3, in window 0 = CTRL0's bank + CTRL1..3.  m1_cart catches the write
+| and does that instead; m1_wb keeps what each EverDrive window shows, so the window-1 routes
+| (MODE1-3, MODE1-7) put the right bank back.  Page 7 holds bank 31 (the OS's): a game's EverDrive
+| build must never ask for it (the games' CART_ED probes stop at page 6).  Not set: nothing assembles.
+        .ifndef OL_M1PAGE
+        .equ    OL_M1PAGE, 0
+        .endif
 | MODE1-6: the EverDrive's write-enable bit (CTRL0 bit 13, W) is OFF except inside a copy INTO the
 | cart.  Console, 25 Oct 2026 (edw0): with W on, some of the 68000's writes to OTHER addresses (work
 | RAM, the VDP, the gate array - what a listener does all the time) land in the cart, and the SH2's
@@ -1590,12 +1601,28 @@ m1_xfer:
 5:      adda.l  a3,a0
         bsr     m1_cpy                  /* a read from the cart: W stays off */
         suba.l  a3,a0
-6:      move.w  #\back,\reg             /* the window = its own bank again */
+6:
+        .if OL_M1PAGE
+        move.w  m1_wb+2*(\back)(pc),\reg /* the window = what it showed (a page may have changed it) */
+        .else
+        move.w  #\back,\reg             /* the window = its own bank again */
+        .endif
         bclr    #0,0xA15107
         move.w  (sp)+,sr
         rts
         .endm
 m1_cart:
+        .if OL_M1PAGE
+        tst.w   d4                      /* MODE1-9: one byte written to a page register? */
+        bne.b   m1_np
+        cmpi.l  #1,d2
+        bne.b   m1_np
+        cmpa.l  #0xA130F0,a1
+        beq     m1_page
+        cmpa.l  #0xA130F2,a1
+        beq     m1_page
+m1_np:
+        .endif
         .if OL_M1SAVE
         tst.w   d4
         bne.b   1f
@@ -1680,6 +1707,43 @@ m1_cpy:
         move.w  (a0)+,(a1)+
         dbra    d1,3b
         rts
+
+        .if OL_M1PAGE
+| MODE1-9: the page byte is at (a0) (the buffer: the game wrote it into Word RAM).  a1 = the register.
+m1_page:
+        move.l  a2,-(sp)
+        lea     m1_wb(pc),a2
+        moveq   #0,d1
+        move.b  (a0),d1
+        lsl.w   #2,d1                   /* page p -> bank 4p */
+        move.w  sr,-(sp)
+        move.w  #0x2700,sr
+        bset    #0,0xA15107
+        cmpa.l  #0xA130F0,a1
+        beq.b   1f
+        lea     0xA130F8,a3             /* window 1 (0x200000): CTRL4..7 = 4p..4p+3 */
+        addq.l  #8,a2
+        bra.b   3f
+1:      move.w  d1,d2                   /* window 0 (0x000000): CTRL0's bank + CTRL1..3 */
+        ori.w   #OL_M1CTRL0_W0,d2
+        move.w  d2,0xA130F0
+        move.w  d1,(a2)+
+        lea     0xA130F2,a3
+        addq.w  #1,d1
+        moveq   #3-1,d2
+        bra.b   4f
+3:      moveq   #4-1,d2
+4:      move.w  d1,(a3)+
+        move.w  d1,(a2)+
+        addq.w  #1,d1
+        dbra    d2,4b
+        bclr    #0,0xA15107
+        move.w  (sp)+,sr
+        movea.l (sp)+,a2
+        rts
+        .align  2
+m1_wb:  .word   0, 1, 2, 3, 4, 5, 6, 7  /* what EverDrive window n shows (the launcher's linear start) */
+        .endif
 
         .align  2
 m1_buf:

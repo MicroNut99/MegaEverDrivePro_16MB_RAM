@@ -79,6 +79,11 @@ ifdef M1SAVEWIN
 ASFLAGS += --defsym OL_M1SAVEWIN=$(M1SAVEWIN)     # MODE1-7b: through another window (1-7)
 endif
 endif
+# MODE1-9: M1PAGE=1 the paged games' page-register writes (a byte to 0xA130F0/F2) become the EverDrive's
+# window registers (page p in window 1 = CTRL4..7 = 4p..4p+3)
+ifeq ($(M1PAGE),1)
+ASFLAGS += --defsym OL_M1PAGE=1
+endif
 endif
 
 PREFIX = $(ROOTDIR)/m68k-elf/bin/m68k-elf-

@@ -55,6 +55,20 @@ the copies. Defaults 31 and 1. Made for the EDSAVE-3 console tests of the in-gam
 freezes the game) and window 7 (window 1 holds the Caves level data while it is played; window 7
 is free then). Without `M1SAVE` nothing of this assembles.
 
+## MODE1-9: the paged games' pages (`M1PAGE=1`)
+
+OpenJazz, Hurrican, SuperTux and Sonic CD were written for the 16MB-PCB cart's 2 MB pages: two
+windows (cart `0x000000`-`0x1FFFFF`, `0x200000`-`0x3FFFFF`), a page register each (`0xA130F0`,
+`0xA130F2`), the page set by one byte written with RV = 1 through `safe_cart_xfer`. With `M1PAGE=1`
+`m1_cart` catches that one-byte write to either register and sets the EverDrive's windows instead:
+page p in window 1 = `CTRL4..7` = banks 4p..4p+3; in window 0 = `CTRL0`'s bank bits + `CTRL1..3`.
+`m1_wb` (eight words in the listener's RAM) keeps what each EverDrive window shows, so the
+window-1 routes of MODE1-3 and MODE1-7 put the right bank back afterwards. Page 7 would be banks
+28-31 - bank 31 is the battery RAM - so a game's EverDrive build (`CART=ED`) uses pages 1-6.
+The games' own listener commands (Jazz's Genesis plane and bonus floor, SuperTux's VSRAM writes)
+are merged on top of the stack's file; each game's default program assembles byte for byte as
+before. `listener/ed_apply_jazzlike.py` applies the whole set of switches to a Jazz-shaped game.
+
 ## MODE1-2, 4, 8: the rest
 
 | Switch | Effect |

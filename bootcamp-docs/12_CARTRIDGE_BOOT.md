@@ -76,6 +76,20 @@ PSRAM chips, bank 31 the backup memory.  Consequences:
 - "is the game / level already in the cart?" checks can never hit after a relaunch; every launch loads
   from the CD.  The checks are harmless (they verify a checksum of the data), just never true.
 
+**The paged games on the EverDrive (26 Oct 2026, MODE1-9).** OpenJazz, Hurrican, SuperTux and Sonic CD switch
+the 16MB-PCB cart's 2 MB pages with one byte written (RV = 1, `safe_cart_xfer`) to `0xA130F2` (window 1,
+cart `0x200000`-`0x3FFFFF`) or `0xA130F0` (window 0).  With `M1PAGE=1` the listener's `m1_cart` catches
+that write and sets the EverDrive's windows instead: page p in window 1 = `CTRL4..7` = banks 4p..4p+3, in
+window 0 = `CTRL0`'s bank + `CTRL1..3`; `m1_wb` keeps what every window shows so the window-1 routes put
+the right bank back.  **Page 7 is out of bounds** (banks 28-31: bank 31 is the EverDrive's battery RAM,
+the OS's own above 256 KB), so a game's EverDrive build probes and uses pages 1-6 only.  Each game gets
+it as switches on its own `build.sh` (`CART=ED EDCD=1`; SuperTux `CART_MB=ED`): the stack's listener
+with the game's own commands merged (its default program byte for byte as before), the launcher, and
+EDSAVE-4 in its command wait (`tools/ed_apply_jazzlike.py` does the Jazz-shaped ones).  Done: OpenJazz
+REV, Hurrican, SuperTux REV.  Not yet: Sonic CD (its 16 MB layout puts act files and the menu's tail in
+page 7 - a layout change first) and D32XR CD32X (its own 68000 program writes the page registers, and
+its SH2 waits are tight cached loops rather than SDRAM ones).
+
 **An SH2 during the 68000's RV = 1 copies (26 Oct 2026, `edsave3/EDSAVE3.32X`).**  OpenLara's saves in
 bank 31 worked at the title and froze the in-game passport - the master SH2 dead in its own code right
 after a save command, with a PSRAM bank and with window 7 just the same.  The probe: the slave reads
