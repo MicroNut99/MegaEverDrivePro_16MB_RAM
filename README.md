@@ -21,7 +21,8 @@ this repository is the one place that holds all of it with the explanation.
 | [docs/03_THE_LISTENER.md](docs/03_THE_LISTENER.md) | The 68000 listener for the cartridge boot (`MODE1`): the address map, the window-1 route, the write-enable bit, the save bank, every switch. |
 | [docs/04_SAVES_ON_THE_SD_CARD.md](docs/04_SAVES_ON_THE_SD_CARD.md) | Why saves in the cart vanish, bank 31 and `bram.srm`, how OpenLara reads and writes its saves through the Sub-CPU, and why every save command parks the slave SH2. |
 | [docs/05_PROBES_AND_FINDINGS.md](docs/05_PROBES_AND_FINDINGS.md) | `edtest`, `edw0`, `edsave`, `edsave2`: what each ROM does and what the console answered. The chronology of the day. |
-| [docs/06_ARES_MODEL.md](docs/06_ARES_MODEL.md) | The EverDrive board in ares: what is modelled, what is a choice, how to run the cartridge boot headless. |
+| [docs/06_ARES_MODEL.md](docs/06_ARES_MODEL.md) | The EverDrive board in ares: what is modelled, what is a choice, how to run the cartridge boot in the window and headless. |
+| [docs/07_YOUR_OWN_GAME.md](docs/07_YOUR_OWN_GAME.md) | **`EDCD.32X` is a hook for *your* CD game**: what it carries, why there is one per disc, and how to make one for a game on the stack, step by step - and what to do about its saves. |
 
 The originals these were written from are kept unchanged: `bootcamp-docs/` (the CD32X BootCamp's
 docs 01, 04, 06, 09, 10, 11, 12), `openlara/README-EDCD.md`, `openlara/README-EVERDRIVE.md`,
@@ -37,14 +38,25 @@ docs 01, 04, 06, 09, 10, 11, 12), `openlara/README-EDCD.md`, `openlara/README-EV
 | `openlara/` | OpenLara's Sub-CPU program with the save commands (`subcpu/main.c`: CMD 61, 62, 57, 58), its listener and Makefile, the engine patch `openlara-edsave.patch` (saves through the Sub-CPU, slot cache, SH2 parking), `build.sh` with the `EDCD` / `EDCD_SAVE` / `EDCD_DIAG` blocks, the readmes | OpenLara CD32X REV |
 | `ares/` | `everdrive-pro-core-v148.patch` (the whole EverDrive core against upstream ares v148, as of 25 Oct 2026), the three files it changes most for reading, `README-CD32X.md` (the manual), the release notes | the ares CD32X build |
 
+## The `.32X` is a hook for your CD game
+
+`EDCD.32X` is not a generic launcher: it carries the disc's own Sub-CPU program (built for the
+cartridge boot) and its SH2 loader, and its 32X header is copied from that loader's CD boot table -
+so the 32X's boot ROMs load the disc's loader from the cartridge exactly as the Sega CD BIOS would
+from the disc. One launcher per disc; rebuild it when the Sub-CPU side changes. Any game on the
+CD32X BootCamp stack gets one from its own `build.sh` with `EDCD=1`, or by hand in four steps
+([docs/07](docs/07_YOUR_OWN_GAME.md)). A game that is not on the stack has to be moved onto it first.
+
 ## Testing on a PC: ares CD32X for Windows
 
 The ares CD32X build (ares v148 with the RAM carts and this EverDrive model) runs the whole thing
 in a window: cart type *Mega EverDrive PRO*, **Settings → Options → EverDrive launcher** pointed at
 `EDCD.32X`, load the disc - the cartridge boot as the console does it, pad in hand, the saves in
 the EverDrive cart file. Every launcher and disc here went through it before the console, and
-after the day's findings it fails the launchers the console fails. Windows x64 builds are the
-`cd32x-latest` and `cd32x-v1.x-everdrive` releases of the ares CD32X repository; `ares/README-CD32X.md`
+after the day's findings it fails the launchers the console fails. The launcher field is in the Windows build from v1.2 on (`cd32x-v1.2-everdrive`); before it, the
+Windows window could only boot the disc the normal way, with the EverDrive as a plain RAM cart -
+the disc's own Sub-CPU program, saves in the cart, no different from a battery-backed cart. Windows x64
+builds are the `cd32x-latest` and `cd32x-v1.x-everdrive` releases of the ares CD32X repository; `ares/README-CD32X.md`
 is its manual and `docs/06_ARES_MODEL.md` says what it models and what it does not.
 
 ## Build
