@@ -132,20 +132,20 @@ different questions, and for Hurrican the answers differed.
 |---|---|---|---|
 | OpenLara REV | settings, game, 16 slots, records | cart pieces 0, 14 + its slot area | yes - console-proven |
 | OpenJazz REV | `OPENJAZZ.CFG`, `SAVE.0-3` (Holiday Hare: its own 5-9), port settings, cache ledger | cart pieces 0-10, CMD 58/61 + reads through `plat_save_read` | yes (`243bd20`) |
-| Hurrican | **the high-score table** - its only persistent state | **CMD 56 / 59: the CD BIOS's backup RAM** (`_BURAM`, `jsr 0x5F16`), file `OPENJAZZ_JJ` - *not* the cart save area | **it was not.** `b3e89c9` moved the cart save area, which Hurrican barely uses (piece 10, port settings). Fixed in `98d0473`: under `CART_EDSAVE` the Sub-CPU program routes CMD 56 / 59 to save piece 12 in bank 31 - engine unchanged, disc unchanged |
+| Hurrican | **the high-score table** - its only persistent state | **CMD 56 / 59: the CD BIOS's backup RAM** (`_BURAM`, `jsr 0x5F16`), file `OPENJAZZ_JJ` - *not* the cart save area | **no.** `b3e89c9` moved the cart save area, which Hurrican barely uses (piece 10, port settings). Its scores depended on the console's own internal backup RAM - which an EverDrive launcher does not wipe, but which OpenJazz and SuperTux both abandoned as not working on the console (BootCamp `docs/07`), and which is 8 KB shared by every game. `98d0473`: under `CART_EDSAVE` the Sub-CPU program routes CMD 56 / 59 to save piece 12 in bank 31 instead - engine unchanged, disc unchanged. `a3cbaf0` also gave the disc build's file its own name (`HURRICAN_HB`, was OpenJazz's) and 2 blocks instead of 64 |
 | SuperTux REV | the save (piece 13), the probe's marker (15) | cart pieces, CMD 58/61 + `plat_save_read` | yes (`ab778e0`) |
 | D32XR (Doom) | the save (piece 11), the preload record (15) | its own 68000 program (`crt0.s`) | yes (`3de1cc9`) |
-| Sonic CD 2011 | everything (512 bytes) | **backup RAM only** (`SONICCD32X_`) | **no** - it will keep nothing on the EverDrive until CMD 56 / 59 are rerouted the way Hurrican's now are |
+| Sonic CD 2011 | everything (512 bytes) | **backup RAM only** (`SONICCD32X_`) | **no** - it keeps everything in the console's internal backup RAM (`SONICCD32X_`, 8 blocks). That survives an EverDrive launcher, but shares the console's 8 KB with every other game; a plan to get it to 2 + 4 blocks, with the reroute to bank 31 as the fallback, is in that repo's `docs/R5_SAVE_MINIMUM.md` (`ce69207`) |
 
 The general rule, now in the BootCamp's `docs/02`: **the Sega CD's internal backup RAM has nothing to
 do with the EverDrive's save bank.** Whatever ED-SAVE does to the cart save area, a title that keeps
 its state in backup RAM saves nothing on a launcher build until CMD 56 / 59 are redirected to a save
 piece. That redirect lives entirely in the Sub-CPU program, so it costs the engine nothing.
 
-Left open deliberately: on the **disc** build Hurrican's backup-RAM file is still named
-`OPENJAZZ_JJ` (OpenJazz's), so the two titles share one file in the console's 8 KB of internal
-backup RAM, and Hurrican reserves 4 KB of it for a 128-byte table. Renaming it would strand whatever
-is saved under the old name, so it is a decision for MicroNut99, not a silent fix.
+Settled since (MicroNut99 asked for it, 26 Oct 13:08): Hurrican's disc build no longer writes
+OpenJazz's file. `a3cbaf0` names it `HURRICAN_HB` and declares 2 blocks rather than 64 - it had been
+reserving 4 KB of the console's 8 KB for a 128-byte table. Both are deliberate breaks: scores saved
+under the old name are not read back.
 
 ### The hand review of Fable's save work (26 Oct, 11:30-11:35, Opus) - no defects found
 
